@@ -1,0 +1,307 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function userPath() {
+      return /databases/$(database)/documents/users/$(request.auth.uid);
+    }
+
+    function userDoc() {
+      return get(userPath()).data;
+    }
+
+    function isAdmin() {
+      return isSignedIn()
+        && exists(userPath())
+        && userDoc().role == 'admin';
+    }
+
+    function hasPosition(position) {
+      return isSignedIn()
+        && exists(userPath())
+        && userDoc().position == position;
+    }
+
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      // Свой профиль при регистрации ИЛИ админ добавляет сотрудника в команду
+      allow create: if isSignedIn()
+        && (request.auth.uid == userId || isAdmin());
+      allow update, delete: if isAdmin();
+    }
+
+    match /tasks/{taskId} {
+      allow read: if isAdmin()
+        || hasPosition('head')
+        || resource.data.assignedTo == request.auth.uid
+        || resource.data.createdBy == request.auth.uid;
+      allow create: if isSignedIn()
+        && request.resource.data.keys().hasAll([
+          'title', 'assignedTo', 'assignedToName', 'createdBy', 'status', 'priority'
+        ])
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && (
+          isAdmin()
+          || hasPosition('head')
+          || request.resource.data.assignedTo == request.auth.uid
+        );
+      allow update: if isAdmin()
+        || hasPosition('head')
+        || resource.data.assignedTo == request.auth.uid
+        || resource.data.createdBy == request.auth.uid;
+      allow delete: if isAdmin()
+        || hasPosition('head')
+        || resource.data.createdBy == request.auth.uid;
+
+      match /comments/{commentId} {
+        allow read: if isAdmin()
+          || hasPosition('head')
+          || get(/databases/$(database)/documents/tasks/$(taskId)).data.assignedTo == request.auth.uid
+          || get(/databases/$(database)/documents/tasks/$(taskId)).data.createdBy == request.auth.uid;
+        allow create: if isSignedIn()
+          && request.resource.data.authorId == request.auth.uid
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && (
+            isAdmin()
+            || hasPosition('head')
+            || get(/databases/$(database)/documents/tasks/$(taskId)).data.assignedTo == request.auth.uid
+            || get(/databases/$(database)/documents/tasks/$(taskId)).data.createdBy == request.auth.uid
+          );
+        allow update, delete: if isAdmin()
+          || resource.data.authorId == request.auth.uid;
+      }
+    }
+
+    match /daily_task_templates/{templateId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    match /task_templates/{templateId} {
+      allow read: if isSignedIn();
+      allow create: if isAdmin()
+        || hasPosition('head')
+        || (
+          hasPosition('designer')
+          && request.resource.data.userId == request.auth.uid
+        );
+      allow delete: if isAdmin()
+        || hasPosition('head')
+        || (
+          hasPosition('designer')
+          && resource.data.userId == request.auth.uid
+        );
+      allow update: if isAdmin()
+        || hasPosition('head')
+        || (isSignedIn() && resource.data.userId == request.auth.uid);
+    }
+
+    match /clients/{clientId} {
+      allow read: if isAdmin()
+        || resource.data.assignedTo == request.auth.uid
+        || resource.data.salesManagerId == request.auth.uid;
+      allow create: if isSignedIn();
+      allow update: if isAdmin()
+        || resource.data.assignedTo == request.auth.uid
+        || resource.data.salesManagerId == request.auth.uid;
+      allow delete: if isAdmin();
+    }
+
+    match /contacts/{contactId} {
+      allow read: if isAdmin()
+        || hasPosition('leads_manager_1')
+        || hasPosition('leads_manager_2');
+      allow create: if isSignedIn();
+      allow update, delete: if isAdmin()
+        || hasPosition('leads_manager_1')
+        || hasPosition('leads_manager_2');
+    }
+
+    /** Admin-editable dropdown options (status, type, source, …) */
+    match /app_option_lists/{listId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /client_history/{historyId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update, delete: if isAdmin();
+    }
+
+    match /call_logs/{logId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update, delete: if isAdmin();
+    }
+
+    match /kpi_plans/{planId} {
+      allow read: if isAdmin() || resource.data.userId == request.auth.uid;
+      allow write: if isAdmin();
+    }
+
+    match /kpi_lead_log/{logId} {
+      allow read: if isAdmin() || resource.data.assignedTo == request.auth.uid;
+      allow create: if isSignedIn();
+      allow update, delete: if isAdmin();
+    }
+
+    match /deletion_requests/{requestId} {
+      allow read: if isAdmin() || resource.data.requestedBy == request.auth.uid;
+      allow create: if isSignedIn()
+        && request.resource.data.requestedBy == request.auth.uid
+        && request.resource.data.status == 'pending';
+      allow update, delete: if isAdmin();
+    }
+
+    match /departments/{deptId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    match /design_requests/{requestId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isAdmin()
+        || resource.data.requestedBy == request.auth.uid
+        || hasPosition('designer');
+      allow delete: if isAdmin();
+    }
+
+    match /showroom_items/{itemId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin()
+        || hasPosition('head')
+        || hasPosition('leads_manager_2');
+    }
+
+    match /showroom_settings/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin()
+        || hasPosition('head')
+        || hasPosition('leads_manager_2');
+    }
+
+    match /showroom_checklist/{logId} {
+      allow read: if isAdmin()
+        || hasPosition('head')
+        || hasPosition('leads_manager_2');
+      allow create, update: if isSignedIn()
+        && (
+          isAdmin()
+          || hasPosition('head')
+          || hasPosition('leads_manager_2')
+        );
+      allow delete: if isAdmin() || hasPosition('head');
+    }
+
+    match /smm_teams/{id} {
+      allow read: if isAdmin()
+        || hasPosition('head')
+        || hasPosition('leads_manager_1');
+      allow create, update, delete: if isAdmin()
+        || hasPosition('head')
+        || hasPosition('leads_manager_1');
+    }
+
+    match /smm_content_items/{id} {
+      allow read: if isAdmin()
+        || hasPosition('head')
+        || hasPosition('leads_manager_1');
+      allow create, update, delete: if isAdmin()
+        || hasPosition('head')
+        || hasPosition('leads_manager_1');
+    }
+
+    match /smm_content_facts/{id} {
+      allow read: if isAdmin()
+        || hasPosition('head')
+        || hasPosition('leads_manager_1');
+      allow create, update, delete: if isAdmin()
+        || hasPosition('head')
+        || hasPosition('leads_manager_1');
+    }
+
+    match /smm_metrics/{id} {
+      allow read: if isAdmin()
+        || hasPosition('head')
+        || hasPosition('leads_manager_1');
+      allow create, update, delete: if isAdmin()
+        || hasPosition('head')
+        || hasPosition('leads_manager_1');
+    }
+
+    match /smm_payment_items/{id} {
+      allow read: if isAdmin()
+        || hasPosition('head')
+        || hasPosition('leads_manager_1');
+      allow create, update, delete: if isAdmin()
+        || hasPosition('head')
+        || hasPosition('leads_manager_1');
+    }
+
+    match /smm_payments/{id} {
+      allow read: if isAdmin()
+        || hasPosition('head')
+        || hasPosition('leads_manager_1');
+      allow create, update, delete: if isAdmin()
+        || hasPosition('head')
+        || hasPosition('leads_manager_1');
+    }
+
+    match /dev_projects/{projectId} {
+      allow read: if isSignedIn()
+        && (isAdmin() || hasPosition('head') || hasPosition('dev_manager'));
+      allow create, update: if isAdmin() || hasPosition('head');
+      allow delete: if isAdmin();
+    }
+
+    match /dev_subtasks/{subtaskId} {
+      allow read: if isSignedIn()
+        && (isAdmin() || hasPosition('head') || hasPosition('dev_manager'));
+      allow create: if isAdmin() || hasPosition('head') || hasPosition('dev_manager');
+      allow update: if isAdmin()
+        || hasPosition('head')
+        || hasPosition('dev_manager');
+      allow delete: if isAdmin() || hasPosition('head');
+
+      match /comments/{commentId} {
+        allow read: if isSignedIn()
+          && (isAdmin() || hasPosition('head') || hasPosition('dev_manager'));
+        allow create: if isSignedIn()
+          && (isAdmin() || hasPosition('head') || hasPosition('dev_manager'))
+          && request.resource.data.authorId == request.auth.uid;
+        allow update, delete: if isAdmin()
+          || resource.data.authorId == request.auth.uid;
+      }
+    }
+
+    match /dev_templates/{templateId} {
+      allow read: if isSignedIn()
+        && (isAdmin() || hasPosition('head') || hasPosition('dev_manager'));
+      allow create, update, delete: if isAdmin() || hasPosition('head');
+    }
+
+    match /milestones/{milestoneId} {
+      allow read: if isSignedIn();
+      allow create, update: if isAdmin() || hasPosition('dev_manager');
+      allow delete: if isAdmin();
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if isAdmin() || resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn()
+        && request.resource.data.keys().hasAll(['userId', 'type', 'title', 'body', 'read'])
+        && request.resource.data.userId is string
+        && request.resource.data.title is string;
+      allow update, delete: if isAdmin() || resource.data.userId == request.auth.uid;
+    }
+  }
+}

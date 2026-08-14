@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Pencil } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -17,10 +18,14 @@ export function DepartmentsManager() {
     createDepartment,
     updateDepartment,
     addMember,
+    updateMember,
+    moveMember,
     removeMember,
   } = useDepartments()
   const [busy, setBusy] = useState(false)
   const [drafts, setDrafts] = useState<Record<string, string>>({})
+  const [editing, setEditing] = useState<{ deptId: string; memberId: string } | null>(null)
+  const [editName, setEditName] = useState('')
   const seeding = useRef(false)
 
   // Ensure two departments: Ткань + ГП (fix type if created with wrong type)
@@ -91,12 +96,42 @@ export function DepartmentsManager() {
     }
   }
 
+  function startEdit(deptId: string, memberId: string, name: string) {
+    setEditing({ deptId, memberId })
+    setEditName(name)
+  }
+
+  async function saveEdit() {
+    if (!editing) return
+    const name = editName.trim()
+    if (!name) return
+    setBusy(true)
+    try {
+      await updateMember(editing.deptId, editing.memberId, { name })
+      setEditing(null)
+      setEditName('')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleMove(fromDeptId: string, toDeptId: string, memberId: string) {
+    setBusy(true)
+    try {
+      await moveMember(fromDeptId, toDeptId, memberId)
+      setEditing(null)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <Card className="space-y-4">
       <div>
         <h2 className="text-lg font-semibold text-text">Отделы продаж</h2>
         <p className="mt-1 text-xs text-muted">
-          Два отдела — Ткань и ГП. Впишите ФИО и нажмите «+» (телефон не нужен).
+          Два отдела — Ткань и ГП. Можно добавить ФИО, исправить ошибку в имени или
+          перенести человека в другой отдел. Имя обновится и на карточках клиентов.
         </p>
       </div>
 
@@ -124,21 +159,85 @@ export function DepartmentsManager() {
                     {(dept.members || []).length === 0 ? (
                       <li className="text-xs text-muted">Пока никого нет — добавьте ФИО</li>
                     ) : (
-                      (dept.members || []).map((m) => (
-                        <li
-                          key={m.id}
-                          className="flex items-center justify-between gap-2 rounded-lg bg-surface px-2.5 py-2 text-sm"
-                        >
-                          <span className="font-medium text-text">{m.name}</span>
-                          <button
-                            type="button"
-                            onClick={() => void removeMember(dept.id, m.id)}
-                            className="text-xs text-muted hover:text-danger"
+                      (dept.members || []).map((m) => {
+                        const isEditing =
+                          editing?.deptId === dept.id && editing.memberId === m.id
+                        const other = rows.find((r) => r.dept && r.dept.id !== dept.id)?.dept
+                        return (
+                          <li
+                            key={m.id}
+                            className="rounded-lg bg-surface px-2.5 py-2 text-sm"
                           >
-                            Убрать
-                          </button>
-                        </li>
-                      ))
+                            {isEditing ? (
+                              <div className="space-y-2">
+                                <Input
+                                  value={editName}
+                                  onChange={(e) => setEditName(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      e.preventDefault()
+                                      void saveEdit()
+                                    }
+                                    if (e.key === 'Escape') setEditing(null)
+                                  }}
+                                  autoFocus
+                                />
+                                <div className="flex flex-wrap gap-2">
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    disabled={busy || !editName.trim()}
+                                    onClick={() => void saveEdit()}
+                                  >
+                                    Сохранить
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="ghost"
+                                    disabled={busy}
+                                    onClick={() => setEditing(null)}
+                                  >
+                                    Отмена
+                                  </Button>
+                                  {other && (
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="secondary"
+                                      disabled={busy}
+                                      onClick={() => void handleMove(dept.id, other.id, m.id)}
+                                    >
+                                      В «{other.name}»
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="min-w-0 font-medium text-text">{m.name}</span>
+                                <div className="flex shrink-0 items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => startEdit(dept.id, m.id, m.name)}
+                                    className="inline-flex items-center gap-1 text-xs text-secondary hover:underline"
+                                  >
+                                    <Pencil className="h-3 w-3" />
+                                    Изменить
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => void removeMember(dept.id, m.id)}
+                                    className="text-xs text-muted hover:text-danger"
+                                  >
+                                    Убрать
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </li>
+                        )
+                      })
                     )}
                   </ul>
 

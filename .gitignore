@@ -28,3 +28,5 @@ serviceAccount*.json
 
 .vercel
 .env*
+tmp-user.json
+tmp-user.json

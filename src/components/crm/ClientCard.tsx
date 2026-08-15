@@ -38,7 +38,10 @@ export function ClientCard({
   const contactOverdue = !!deadline && deadline < today && !isArchived && !won
   const stepActive = clientHasActiveStep(client)
 
-  const nextStages = funnel.filter((s) => s.value !== client.stage).slice(0, 2)
+  const stageIndex = funnel.findIndex((s) => s.value === client.stage)
+  const prevStage = stageIndex > 0 ? funnel[stageIndex - 1] : null
+  const nextStages =
+    stageIndex >= 0 ? funnel.slice(stageIndex + 1, stageIndex + 3) : funnel.slice(0, 2)
   const rejectStage = closedStagesFind(archiveStages, 'rejected') || 'rejected'
   const failedStage = closedStagesFind(archiveStages, 'failed') || 'failed'
   const abandonedStage = closedStagesFind(archiveStages, 'abandoned') || 'abandoned'
@@ -169,6 +172,16 @@ export function ClientCard({
               → {stage.label}
             </Button>
           ))}
+          {prevStage && (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => onStageChange(client.id, prevStage.value, client.stage)}
+            >
+              ← {prevStage.label}
+            </Button>
+          )}
           <Button
             type="button"
             size="sm"

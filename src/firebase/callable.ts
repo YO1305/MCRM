@@ -85,6 +85,22 @@ export async function adminSetUserCredentials(
   }
 }
 
+export interface AiLeadAnalysisResult {
+  ok: boolean
+  today: string
+  candidates: number
+  processed: number
+  remaining: number
+  created: number
+  skipped: number
+  errors: number
+}
+
+/** Admin: generate Groq AI tasks for active leads (Vercel API). */
+export async function runAiLeadAnalysisNow(): Promise<AiLeadAnalysisResult> {
+  return adminApi<AiLeadAnalysisResult>('/api/ai-lead-analysis', {})
+}
+
 /**
  * Create team member without Admin SDK:
  * - with login: secondary Auth app (admin session stays) + Firestore profile

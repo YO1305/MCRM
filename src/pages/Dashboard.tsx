@@ -5,8 +5,10 @@ import { useAuth } from '@/hooks/useAuth'
 import { useClients } from '@/hooks/useClients'
 import { useAiTasks } from '@/hooks/useAiTasks'
 import { Card } from '@/components/ui/Card'
+import { Button } from '@/components/ui/Button'
 import { POSITION_LABELS } from '@/constants/positions'
 import { subscribeToCollection } from '@/firebase/firestore'
+import { runAiLeadAnalysisNow } from '@/firebase/callable'
 import type { Task } from '@/types/task.types'
 import { canSeeLeadActivity, countLeadActivity } from '@/utils/leadActivity'
 import { todayISO, toISODate } from '@/utils/dates'
@@ -18,6 +20,7 @@ export function Dashboard() {
   const showActivity = isAdmin || canSeeLeadActivity(user)
   const activityCounts = useMemo(() => countLeadActivity(clients), [clients])
   const [tasks, setTasks] = useState<Task[]>([])
+  const [aiRunning, setAiRunning] = useState(false)
 
   useEffect(() => {
     if (!user) return
@@ -152,15 +155,48 @@ export function Dashboard() {
 
       {isAdmin && aiOverview && (
         <Card className="space-y-3">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-lg font-semibold text-text">ИИ задачи на сегодня</h2>
-            <Link to="/tasks" className="text-sm font-medium text-secondary hover:underline">
-              К задачам
-            </Link>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                disabled={aiRunning}
+                onClick={() => {
+                  void (async () => {
+                    setAiRunning(true)
+                    try {
+                      const result = await runAiLeadAnalysisNow()
+                      alert(
+                        `ИИ: создано ${result.created}, пропущено ${result.skipped}` +
+                          (result.remaining > 0
+                            ? `, осталось ${result.remaining} — нажмите ещё раз`
+                            : ''),
+                      )
+                    } catch (err) {
+                      console.error(err)
+                      alert(
+                        err instanceof Error
+                          ? err.message
+                          : 'Не удалось запустить ИИ. Проверьте GROQ_API_KEY в Vercel.',
+                      )
+                    } finally {
+                      setAiRunning(false)
+                    }
+                  })()
+                }}
+              >
+                {aiRunning ? 'Генерирую…' : 'Сгенерировать ИИ-задачи'}
+              </Button>
+              <Link to="/tasks" className="text-sm font-medium text-secondary hover:underline">
+                К задачам
+              </Link>
+            </div>
           </div>
           {aiOverview.rows.length === 0 ? (
             <p className="text-sm text-muted">
-              Пока нет ИИ-задач. Появятся после утреннего запуска Cloud Function (нужен ключ Groq).
+              Пока нет ИИ-задач. Нажмите «Сгенерировать» (нужен GROQ_API_KEY в Vercel) или дождитесь
+              утреннего автозапуска.
             </p>
           ) : (
             <ul className="space-y-2">

@@ -4,5 +4,16 @@
   "outputDirectory": "dist",
   "rewrites": [
     { "source": "/((?!api/).*)", "destination": "/index.html" }
+  ],
+  "functions": {
+    "api/ai-lead-analysis.js": {
+      "maxDuration": 60
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/ai-lead-analysis",
+      "schedule": "15 3 * * *"
+    }
   ]
 }

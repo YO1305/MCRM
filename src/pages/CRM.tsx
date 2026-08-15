@@ -16,7 +16,8 @@ import { useClientStages } from '@/hooks/useClientStages'
 import { POSITION_LABELS } from '@/constants/positions'
 import { todayISO } from '@/utils/dates'
 import { clientActionDeadline } from '@/utils/clientWork'
-import type { Client } from '@/types/client.types'
+import type { ActivityStatus, Client } from '@/types/client.types'
+import { canSeeLeadActivity, resolveActivityStatus } from '@/utils/leadActivity'
 
 type ViewMode = 'list' | 'kanban'
 type ScopeFilter = 'active' | 'today' | 'overdue' | 'deal' | 'archive' | 'all'
@@ -52,12 +53,14 @@ export function CRM() {
   const [stageFilter, setStageFilter] = useState<ClientStage | 'all'>('all')
   const [assigneeFilter, setAssigneeFilter] = useState('all')
   const [waitFilter, setWaitFilter] = useState('all')
+  const [activityFilter, setActivityFilter] = useState<ActivityStatus | 'all'>('all')
   const [search, setSearch] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
   const [searchParams, setSearchParams] = useSearchParams()
 
   const today = todayISO()
+  const showActivity = isAdmin || canSeeLeadActivity(user)
   const selected = useMemo(
     () => (selectedId ? clients.find((c) => c.id === selectedId) || null : null),
     [clients, selectedId],
@@ -130,6 +133,9 @@ export function CRM() {
       }
       if (stageFilter !== 'all' && c.stage !== stageFilter) return false
       if (waitFilter !== 'all' && c.waitStatus !== waitFilter) return false
+      if (showActivity && activityFilter !== 'all' && resolveActivityStatus(c) !== activityFilter) {
+        return false
+      }
 
       const deadline = clientActionDeadline(c)
       const inWork = !stageIsWon(c.stage) && !stageIsClosed(c.stage)
@@ -148,7 +154,7 @@ export function CRM() {
           return true
       }
     })
-  }, [scoped, search, stageFilter, waitFilter, scope, today])
+  }, [scoped, search, stageFilter, waitFilter, activityFilter, showActivity, scope, today])
 
   async function handleStageChange(
     clientId: string,
@@ -236,6 +242,33 @@ export function CRM() {
         <p className="text-xs text-muted">
           Сумма в воронке (без архива): {stats.pipelineSum.toLocaleString('ru-RU')} сум
         </p>
+      )}
+
+      {showActivity && (
+        <div className="flex flex-wrap gap-2">
+          {(
+            [
+              ['all', 'Все'],
+              ['new', 'Новые'],
+              ['active', 'Активные'],
+              ['critical', 'Критические'],
+              ['frozen', 'Замороженные'],
+            ] as const
+          ).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setActivityFilter(key)}
+              className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                activityFilter === key
+                  ? 'bg-secondary text-white'
+                  : 'bg-surface text-muted shadow-sm hover:text-text'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       )}
 
       {isAdmin && teamUsers.length > 0 && (

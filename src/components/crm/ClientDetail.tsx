@@ -35,6 +35,9 @@ import { CountrySelect } from '@/components/crm/CountrySelect'
 import { WAIT_STATUS_PRESETS } from '@/constants/waitStatus'
 import { formatISODateShort, todayISO } from '@/utils/dates'
 import { clientStepOverdue, visitPrepareDate } from '@/utils/clientWork'
+import { ActivityBadge } from '@/components/crm/ActivityBadge'
+import { calculateActiveMonths } from '@/utils/dateUtils'
+import { canSeeLeadActivity, resolveActivityStatus, resolveOpenedMonth } from '@/utils/leadActivity'
 
 interface ClientDetailProps {
   client: Client | null
@@ -500,6 +503,12 @@ export function ClientDetail({
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4 sm:px-6">
           <div className="flex flex-wrap gap-2">
             <Badge variant={stageBadge(stage)}>{stageLabel(stage)}</Badge>
+            {(isAdmin || canSeeLeadActivity(user)) && (
+              <ActivityBadge
+                status={resolveActivityStatus(client)}
+                months={calculateActiveMonths(resolveOpenedMonth(client))}
+              />
+            )}
             <Badge variant="default">{sourceList.labelOf(source)}</Badge>
             <Badge variant="info">{countryName(country)}</Badge>
             {categories.map((c) => (

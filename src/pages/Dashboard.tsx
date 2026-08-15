@@ -2,13 +2,18 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { where } from 'firebase/firestore'
 import { useAuth } from '@/hooks/useAuth'
+import { useClients } from '@/hooks/useClients'
 import { Card } from '@/components/ui/Card'
 import { POSITION_LABELS } from '@/constants/positions'
 import { subscribeToCollection } from '@/firebase/firestore'
 import type { Task } from '@/types/task.types'
+import { canSeeLeadActivity, countLeadActivity } from '@/utils/leadActivity'
 
 export function Dashboard() {
   const { user, isAdmin } = useAuth()
+  const { clients } = useClients()
+  const showActivity = isAdmin || canSeeLeadActivity(user)
+  const activityCounts = useMemo(() => countLeadActivity(clients), [clients])
   const [tasks, setTasks] = useState<Task[]>([])
 
   useEffect(() => {
@@ -77,6 +82,36 @@ export function Dashboard() {
           <p className="mt-1 text-xs text-muted">Всего завершённых</p>
         </Card>
       </div>
+
+      {showActivity && (
+        <Card className="space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-lg font-semibold text-text">Лиды по активности</h2>
+            <Link to="/crm" className="text-sm font-medium text-secondary hover:underline">
+              Открыть CRM
+            </Link>
+          </div>
+          <p className="text-xs text-muted">Текущий месяц · только открытые лиды</p>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div>
+              <p className="text-sm text-muted">Новые</p>
+              <p className="mt-1 text-2xl font-bold text-blue-600">{activityCounts.new}</p>
+            </div>
+            <div>
+              <p className="text-sm text-muted">Активные</p>
+              <p className="mt-1 text-2xl font-bold text-emerald-600">{activityCounts.active}</p>
+            </div>
+            <div>
+              <p className="text-sm text-muted">Требуют внимания</p>
+              <p className="mt-1 text-2xl font-bold text-amber-600">{activityCounts.critical}</p>
+            </div>
+            <div>
+              <p className="text-sm text-muted">Замороженные</p>
+              <p className="mt-1 text-2xl font-bold text-gray-600">{activityCounts.frozen}</p>
+            </div>
+          </div>
+        </Card>
+      )}
 
       <Card className="space-y-3">
         <div className="flex items-center justify-between gap-3">

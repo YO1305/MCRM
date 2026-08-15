@@ -14,6 +14,10 @@ import { countryName } from '@/constants/leadProducts'
 import { todayISO } from '@/utils/dates'
 import { clientActionDeadline, clientHasActiveStep } from '@/utils/clientWork'
 import { useClientStages } from '@/hooks/useClientStages'
+import { useAuth } from '@/hooks/useAuth'
+import { ActivityBadge } from '@/components/crm/ActivityBadge'
+import { calculateActiveMonths } from '@/utils/dateUtils'
+import { canSeeLeadActivity, resolveActivityStatus, resolveOpenedMonth } from '@/utils/leadActivity'
 
 interface ClientCardProps {
   client: Client
@@ -31,6 +35,8 @@ export function ClientCard({
   onCompleteStep,
 }: ClientCardProps) {
   const { funnel, closed: archiveStages } = useClientStages()
+  const { user, isAdmin } = useAuth()
+  const showActivity = isAdmin || canSeeLeadActivity(user)
   const today = todayISO()
   const deadline = clientActionDeadline(client)
   const isArchived = stageIsClosed(client.stage)
@@ -56,6 +62,12 @@ export function ClientCard({
         <div className="flex flex-wrap items-start gap-2">
           <h3 className="flex-1 text-sm font-semibold text-text">{client.name}</h3>
           <Badge variant={stageBadge(client.stage)}>{stageLabel(client.stage)}</Badge>
+          {showActivity && (
+            <ActivityBadge
+              status={resolveActivityStatus(client)}
+              months={calculateActiveMonths(resolveOpenedMonth(client))}
+            />
+          )}
         </div>
 
         <div className="mt-2 space-y-1 text-xs text-muted">

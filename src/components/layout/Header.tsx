@@ -206,7 +206,11 @@ export function Header({ onMenuClick }: HeaderProps) {
                             setOpen(false)
                             if (n.type === 'smm_payment_reminder' || n.link?.includes('smm-payments')) {
                               navigate(n.link || '/smm-payments')
-                            } else if (n.type === 'client_visit' || n.link?.includes('/crm')) {
+                            } else if (
+                              n.type === 'client_visit' ||
+                              n.type?.startsWith('lead_') ||
+                              n.link?.includes('/crm')
+                            ) {
                               navigate(n.link || '/crm')
                             } else if (n.type?.startsWith('dev_')) {
                               navigate('/subtasks')

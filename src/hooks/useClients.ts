@@ -18,6 +18,7 @@ import {
 import type { LeadCategory } from '@/types/kpiLead.types'
 import { getCurrentMonth, todayISO } from '@/utils/dates'
 import { clientActionDeadline } from '@/utils/clientWork'
+import { activityPatch } from '@/utils/leadActivity'
 import {
   primaryKpiCategory,
   resolveKpiCategories,
@@ -198,6 +199,8 @@ export function useClients() {
     const categories = resolveKpiCategories(input.country, products)
     const category = primaryKpiCategory(categories)
     const stage = input.stage || 'contact'
+    const today = todayISO()
+    const openedMonth = getCurrentMonth()
 
     const clientId = await createDocument('clients', {
       name: input.name.trim(),
@@ -223,6 +226,11 @@ export function useClients() {
       categories,
       kpiLeadCounted: false,
       kpiLeadMonth: null,
+      lastTouchDate: today,
+      lastStageChangeDate: today,
+      openedMonth,
+      activityStatus: 'new',
+      activeMonthsCount: 1,
       ...emptySales,
     })
 
@@ -337,6 +345,19 @@ export function useClients() {
       if (data.products !== undefined) patch.products = nextProducts
     }
 
+    const stageChanged = Boolean(
+      data.stage && opts?.previousStage && data.stage !== opts.previousStage,
+    )
+    const dealChanged =
+      data.dealAmount !== undefined && data.dealAmount !== client?.dealAmount
+    Object.assign(
+      patch,
+      activityPatch(client, patch, {
+        movement: stageChanged || dealChanged,
+        touch: stageChanged || dealChanged,
+      }),
+    )
+
     await updateDocument('clients', clientId, patch)
 
     if (data.stage && opts?.previousStage && data.stage !== opts.previousStage) {
@@ -385,7 +406,11 @@ export function useClients() {
     const client = clients.find((c) => c.id === clientId)
     if (!client) return
 
-    await updateDocument('clients', clientId, { stage })
+    await updateDocument(
+      'clients',
+      clientId,
+      activityPatch(client, { stage }, { movement: true, touch: true }),
+    )
 
     if (previousStage !== stage) {
       const archived = stageIsClosed(stage)
@@ -437,6 +462,8 @@ export function useClients() {
       authorId: user.id,
       authorName: user.name,
     })
+    const client = clients.find((c) => c.id === clientId)
+    await updateDocument('clients', clientId, activityPatch(client, {}, { touch: true }))
   }
 
   async function addSalesNote(clientId: string, text: string) {
@@ -452,6 +479,8 @@ export function useClients() {
       authorId: user.id,
       authorName: user.name,
     })
+    const client = clients.find((c) => c.id === clientId)
+    await updateDocument('clients', clientId, activityPatch(client, {}, { touch: true }))
   }
 
   async function assignSalesManager(
@@ -464,11 +493,16 @@ export function useClients() {
     },
   ) {
     if (!user) throw new Error('Not authenticated')
-    await updateDocument('clients', clientId, {
-      salesDepartment: data.salesDepartment,
-      salesManagerId: data.salesManagerId,
-      salesManagerName: data.salesManagerName,
-    })
+    const client = clients.find((c) => c.id === clientId)
+    await updateDocument(
+      'clients',
+      clientId,
+      activityPatch(client, {
+        salesDepartment: data.salesDepartment,
+        salesManagerId: data.salesManagerId,
+        salesManagerName: data.salesManagerName,
+      }),
+    )
     await createDocument('client_history', {
       clientId,
       type: 'sales_assigned',
@@ -482,7 +516,12 @@ export function useClients() {
 
   async function setWaitStatus(clientId: string, status: string | null) {
     if (!user) throw new Error('Not authenticated')
-    await updateDocument('clients', clientId, { waitStatus: status })
+    const client = clients.find((c) => c.id === clientId)
+    await updateDocument(
+      'clients',
+      clientId,
+      activityPatch(client, { waitStatus: status }, { movement: !!status, touch: !!status }),
+    )
     if (status) {
       await createDocument('client_history', {
         clientId,
@@ -503,10 +542,19 @@ export function useClients() {
   ) {
     if (!user) throw new Error('Not authenticated')
     const text = nextStep.trim()
-    await updateDocument('clients', clientId, {
-      nextStep: text || null,
-      nextStepDeadline: nextStepDeadline || null,
-    })
+    const client = clients.find((c) => c.id === clientId)
+    await updateDocument(
+      'clients',
+      clientId,
+      activityPatch(
+        client,
+        {
+          nextStep: text || null,
+          nextStepDeadline: nextStepDeadline || null,
+        },
+        { touch: true },
+      ),
+    )
     if (text) {
       const deadlinePart = nextStepDeadline ? ` (до ${nextStepDeadline})` : ''
       await createDocument('client_history', {
@@ -526,10 +574,18 @@ export function useClients() {
     const client = clients.find((c) => c.id === clientId)
     const prev = client?.nextStep?.trim()
     const deadline = client?.nextStepDeadline
-    await updateDocument('clients', clientId, {
-      nextStep: null,
-      nextStepDeadline: null,
-    })
+    await updateDocument(
+      'clients',
+      clientId,
+      activityPatch(
+        client,
+        {
+          nextStep: null,
+          nextStepDeadline: null,
+        },
+        { touch: true },
+      ),
+    )
     if (prev) {
       const deadlinePart = deadline ? ` (срок был ${deadline})` : ''
       await createDocument('client_history', {
@@ -552,10 +608,15 @@ export function useClients() {
     if (!user) throw new Error('Not authenticated')
     const date = visitDate || null
     const note = (visitNote || '').trim() || null
-    await updateDocument('clients', clientId, {
-      visitDate: date,
-      visitNote: note,
-    })
+    const client = clients.find((c) => c.id === clientId)
+    await updateDocument(
+      'clients',
+      clientId,
+      activityPatch(client, {
+        visitDate: date,
+        visitNote: note,
+      }),
+    )
     if (date) {
       const notePart = note ? ` · ${note}` : ''
       await createDocument('client_history', {
@@ -598,6 +659,8 @@ export function useClients() {
       authorId: user.id,
       authorName: user.name,
     })
+    const client = clients.find((c) => c.id === clientId)
+    await updateDocument('clients', clientId, activityPatch(client, {}, { touch: true }))
   }
 
   async function logSamplesSent(clientId: string, shipment: SamplesShipmentInput) {
@@ -635,10 +698,15 @@ export function useClients() {
       authorName: user.name,
     })
 
-    await updateDocument('clients', clientId, {
-      lastSamplesSentAt: sentDate,
-      lastSamplesCount: items.length,
-    })
+    const client = clients.find((c) => c.id === clientId)
+    await updateDocument(
+      'clients',
+      clientId,
+      activityPatch(client, {
+        lastSamplesSentAt: sentDate,
+        lastSamplesCount: items.length,
+      }),
+    )
   }
 
   async function deleteClient(clientId: string) {

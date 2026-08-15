@@ -13,6 +13,11 @@ export type NotificationType =
   | 'dev_overdue'
   | 'smm_payment_reminder'
   | 'client_visit'
+  | 'lead_no_touch'
+  | 'lead_no_touch_admin'
+  | 'lead_next_step_overdue'
+  | 'lead_month_3'
+  | 'lead_frozen'
 
 export interface AppNotification {
   id: string

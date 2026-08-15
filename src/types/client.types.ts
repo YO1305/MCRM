@@ -7,6 +7,8 @@ export type ClientSource = string
 /** Интерес к продукции: ткань и/или ГП */
 export type ProductKind = 'fabric' | 'finished'
 
+export type ActivityStatus = 'new' | 'active' | 'critical' | 'frozen'
+
 export type ClientHistoryType =
   | 'created'
   | 'stage_change'
@@ -71,6 +73,11 @@ export interface Client {
   /** Last samples shipment (for managers) */
   lastSamplesSentAt?: string | null
   lastSamplesCount?: number | null
+  lastTouchDate?: string | null
+  lastStageChangeDate?: string | null
+  openedMonth?: string | null
+  activityStatus?: ActivityStatus
+  activeMonthsCount?: number
   createdAt: unknown
   updatedAt: unknown
 }

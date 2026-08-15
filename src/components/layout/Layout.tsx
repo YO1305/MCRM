@@ -7,6 +7,7 @@ import { TemplateMaterializer } from './TemplateMaterializer'
 import { DevMaterializer } from './DevMaterializer'
 import { SmmPaymentReminder } from './SmmPaymentReminder'
 import { ClientVisitReminder } from './ClientVisitReminder'
+import { LeadActivityScanner } from './LeadActivityScanner'
 import { AppUpdateBanner } from './AppUpdateBanner'
 import { CrmConfigBootstrap } from './CrmConfigBootstrap'
 
@@ -20,6 +21,7 @@ export function Layout() {
       <DevMaterializer />
       <SmmPaymentReminder />
       <ClientVisitReminder />
+      <LeadActivityScanner />
       <AppUpdateBanner />
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 

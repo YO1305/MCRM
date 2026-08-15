@@ -23,10 +23,39 @@ export function formatDate(date: Date = new Date()): string {
   return toISODate(date)
 }
 
-export function openedMonthFromCreatedAt(createdAt: unknown): string {
-  const seconds = (createdAt as { seconds?: number } | null)?.seconds
-  if (seconds) return getCurrentMonth(new Date(seconds * 1000))
-  return getCurrentMonth()
+export function openedMonthFromCreatedAt(createdAt: unknown): string | null {
+  if (!createdAt) return null
+
+  if (typeof createdAt === 'string' && createdAt.length >= 7) {
+    return createdAt.slice(0, 7)
+  }
+
+  if (typeof createdAt === 'object' && createdAt !== null) {
+    const withToDate = createdAt as { toDate?: () => Date }
+    if (typeof withToDate.toDate === 'function') {
+      try {
+        return getCurrentMonth(withToDate.toDate())
+      } catch {
+        /* fall through */
+      }
+    }
+    const seconds =
+      (createdAt as { seconds?: number }).seconds ??
+      (createdAt as { _seconds?: number })._seconds
+    if (typeof seconds === 'number') {
+      return getCurrentMonth(new Date(seconds * 1000))
+    }
+  }
+
+  return null
+}
+
+/** Prefer real createdAt so a bad openedMonth stamp cannot lock everyone as "new". */
+export function resolveOpenedMonthFromClient(client: {
+  openedMonth?: string | null
+  createdAt?: unknown
+}): string {
+  return openedMonthFromCreatedAt(client.createdAt) || client.openedMonth || getCurrentMonth()
 }
 
 export { todayISO, parseISODate }

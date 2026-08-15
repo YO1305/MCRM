@@ -1,10 +1,10 @@
 import { stageIsClosed, stageIsWon } from '@/constants/clientStages'
 import type { ActivityStatus, Client } from '@/types/client.types'
-import { calculateActiveMonths, daysDiff, openedMonthFromCreatedAt } from '@/utils/dateUtils'
+import { calculateActiveMonths, daysDiff, resolveOpenedMonthFromClient } from '@/utils/dateUtils'
 import { todayISO } from '@/utils/dates'
 
 export function resolveOpenedMonth(client: Pick<Client, 'openedMonth' | 'createdAt'>): string {
-  return client.openedMonth || openedMonthFromCreatedAt(client.createdAt)
+  return resolveOpenedMonthFromClient(client)
 }
 
 export function isLeadFinal(stage: string | null | undefined): boolean {
@@ -72,7 +72,7 @@ export function activityPatch(
   const today = todayISO()
   const openedMonth =
     (typeof extra.openedMonth === 'string' && extra.openedMonth) ||
-    (client ? resolveOpenedMonth(client) : openedMonthFromCreatedAt(null))
+    (client ? resolveOpenedMonth(client) : resolveOpenedMonthFromClient({}))
 
   const lastTouchDate = opts?.touch || opts?.movement
     ? today

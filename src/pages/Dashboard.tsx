@@ -131,7 +131,9 @@ export function Dashboard() {
               Открыть CRM
             </Link>
           </div>
-          <p className="text-xs text-muted">Текущий месяц · только открытые лиды</p>
+          <p className="text-xs text-muted">
+            «Новый» = открыт в этом месяце. «Активный» — со 2-го месяца при нормальной работе.
+          </p>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <div>
               <p className="text-sm text-muted">Новые</p>

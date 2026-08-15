@@ -228,6 +228,7 @@ export function useClients() {
       kpiLeadMonth: null,
       lastTouchDate: today,
       lastStageChangeDate: today,
+      openedDate: today,
       openedMonth,
       activityStatus: 'new',
       activeMonthsCount: 1,
@@ -327,6 +328,7 @@ export function useClients() {
       gpTypes: string[]
       category: LeadCategory | null
       categories: LeadCategory[]
+      openedDate: string | null
       openedMonth: string | null
     }>,
     opts?: { previousStage?: ClientStage },

@@ -36,9 +36,8 @@ import { WAIT_STATUS_PRESETS } from '@/constants/waitStatus'
 import { formatISODateShort, todayISO } from '@/utils/dates'
 import { clientStepOverdue, visitPrepareDate } from '@/utils/clientWork'
 import { ActivityBadge } from '@/components/crm/ActivityBadge'
-import { calculateActiveMonths } from '@/utils/dateUtils'
+import { calculateActiveMonths, resolveOpenedDateFromClient } from '@/utils/dateUtils'
 import { canSeeLeadActivity, resolveActivityStatus, resolveOpenedMonth } from '@/utils/leadActivity'
-import { getCurrentMonth } from '@/utils/dates'
 
 interface ClientDetailProps {
   client: Client | null
@@ -65,6 +64,7 @@ interface ClientDetailProps {
       gpTypes: string[]
       category: LeadCategory | null
       categories: LeadCategory[]
+      openedDate?: string | null
       openedMonth?: string | null
     },
     previousStage: ClientStage,
@@ -165,7 +165,7 @@ export function ClientDetail({
   const [notes, setNotes] = useState('')
   const [nextContactDate, setNextContactDate] = useState('')
   const [dealAmount, setDealAmount] = useState('')
-  const [openedMonth, setOpenedMonth] = useState('')
+  const [openedDate, setOpenedDate] = useState('')
   const [saving, setSaving] = useState(false)
   const [historyText, setHistoryText] = useState('')
   const [leadNote, setLeadNote] = useState('')
@@ -214,7 +214,7 @@ export function ClientDetail({
     setNotes(client.notes || '')
     setNextContactDate(client.nextContactDate || '')
     setDealAmount(client.dealAmount != null ? String(client.dealAmount) : '')
-    setOpenedMonth(resolveOpenedMonth(client))
+    setOpenedDate(resolveOpenedDateFromClient(client))
     setNextStepText(client.nextStep || '')
     setNextStepDeadline(client.nextStepDeadline || '')
     setVisitDate(client.visitDate || '')
@@ -296,7 +296,8 @@ export function ClientDetail({
           notes: notes.trim(),
           nextContactDate: nextContactDate || null,
           dealAmount: dealAmount ? Number(dealAmount) : null,
-          openedMonth: openedMonth.trim() || getCurrentMonth(),
+          openedDate: openedDate.trim() || todayISO(),
+          openedMonth: (openedDate.trim() || todayISO()).slice(0, 7),
           country: country || null,
           products,
           fabricTypes: products.includes('fabric') ? fabricTypes : [],
@@ -1053,16 +1054,15 @@ export function ClientDetail({
                 />
                 <div>
                   <Input
-                    label="Месяц открытия лида (реальный старт)"
-                    type="month"
-                    value={openedMonth}
-                    onChange={(e) => setOpenedMonth(e.target.value)}
+                    label="Дата открытия лида (реальный старт)"
+                    type="date"
+                    value={openedDate}
+                    onChange={(e) => setOpenedDate(e.target.value)}
                     disabled={fieldDisabled}
                   />
                   <p className="mt-1 text-xs text-muted">
-                    Укажите месяц, когда реально начали общение с клиентом (не когда занесли в
-                    CRM). Например 2026-05. От этого считаются статусы «Новый / Активный /
-                    Заморожен».
+                    Выберите в календаре день, когда реально начали общение с клиентом (не когда
+                    занесли в CRM). От этой даты считаются статусы «Новый / Активный / Заморожен».
                   </p>
                 </div>
                 <Textarea

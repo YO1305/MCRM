@@ -119,6 +119,7 @@ export function activityFieldsChanged(
   fields: ReturnType<typeof buildActivityFields>,
 ): boolean {
   return (
+    client.openedDate !== fields.openedDate ||
     client.openedMonth !== fields.openedMonth ||
     client.activityStatus !== fields.activityStatus ||
     client.activeMonthsCount !== fields.activeMonthsCount

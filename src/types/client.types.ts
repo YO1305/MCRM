@@ -75,6 +75,9 @@ export interface Client {
   lastSamplesCount?: number | null
   lastTouchDate?: string | null
   lastStageChangeDate?: string | null
+  /** Real start of work with lead YYYY-MM-DD (calendar). Preferred over openedMonth. */
+  openedDate?: string | null
+  /** YYYY-MM — derived from openedDate when set */
   openedMonth?: string | null
   activityStatus?: ActivityStatus
   activeMonthsCount?: number

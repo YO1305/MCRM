@@ -3,7 +3,9 @@ import type { ActivityStatus, Client } from '@/types/client.types'
 import { calculateActiveMonths, daysDiff, resolveOpenedMonthFromClient } from '@/utils/dateUtils'
 import { todayISO } from '@/utils/dates'
 
-export function resolveOpenedMonth(client: Pick<Client, 'openedMonth' | 'createdAt'>): string {
+export function resolveOpenedMonth(
+  client: Pick<Client, 'openedDate' | 'openedMonth' | 'createdAt'>,
+): string {
   return resolveOpenedMonthFromClient(client)
 }
 
@@ -51,17 +53,24 @@ export function resolveActivityStatus(client: Client): ActivityStatus {
 }
 
 export function buildActivityFields(client: Client): {
+  openedDate: string
   openedMonth: string
   activityStatus: ActivityStatus
   activeMonthsCount: number
 } {
-  // Keep an already saved openedMonth — do not reset it from CRM import date.
   const openedMonth =
-    client.openedMonth && /^\d{4}-\d{2}$/.test(client.openedMonth)
-      ? client.openedMonth
-      : resolveOpenedMonth(client)
-  const merged = { ...client, openedMonth }
+    (client.openedDate && /^\d{4}-\d{2}-\d{2}$/.test(client.openedDate)
+      ? client.openedDate.slice(0, 7)
+      : null) ||
+    (client.openedMonth && /^\d{4}-\d{2}$/.test(client.openedMonth) ? client.openedMonth : null) ||
+    resolveOpenedMonth(client)
+  const openedDate =
+    (client.openedDate && /^\d{4}-\d{2}-\d{2}$/.test(client.openedDate)
+      ? client.openedDate
+      : null) || `${openedMonth}-01`
+  const merged = { ...client, openedDate, openedMonth }
   return {
+    openedDate,
     openedMonth,
     activityStatus: calculateActivityStatus(merged),
     activeMonthsCount: calculateActiveMonths(openedMonth),
@@ -74,9 +83,18 @@ export function activityPatch(
   opts?: { movement?: boolean; touch?: boolean },
 ): Record<string, unknown> {
   const today = todayISO()
-  const openedMonth =
+  let openedDate =
+    typeof extra.openedDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(extra.openedDate)
+      ? extra.openedDate
+      : client?.openedDate || null
+  let openedMonth =
     (typeof extra.openedMonth === 'string' && extra.openedMonth) ||
+    (openedDate ? openedDate.slice(0, 7) : null) ||
     (client ? resolveOpenedMonth(client) : resolveOpenedMonthFromClient({}))
+
+  if (typeof extra.openedDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(extra.openedDate)) {
+    openedMonth = extra.openedDate.slice(0, 7)
+  }
 
   const lastTouchDate = opts?.touch || opts?.movement
     ? today
@@ -90,6 +108,7 @@ export function activityPatch(
   const merged = {
     ...(client || ({} as Client)),
     ...extra,
+    openedDate: openedDate || `${openedMonth}-01`,
     openedMonth,
     lastTouchDate,
     lastStageChangeDate,
@@ -97,6 +116,7 @@ export function activityPatch(
 
   return {
     ...extra,
+    openedDate: merged.openedDate,
     openedMonth,
     ...(opts?.touch || opts?.movement ? { lastTouchDate: today } : {}),
     ...(opts?.movement ? { lastStageChangeDate: today } : {}),

@@ -104,7 +104,7 @@ function buildPromptFromTemplate(template, lead, maxActiveMonths) {
           .join('\n')
       : '- История пуста'
 
-  return String(template || '')
+  const filled = String(template || '')
     .split('{clientName}').join(lead.clientName)
     .split('{company}').join(lead.company || 'не указана')
     .split('{category}').join(lead.category || 'не указана')
@@ -117,6 +117,21 @@ function buildPromptFromTemplate(template, lead, maxActiveMonths) {
     .split('{activeMonthsCount}').join(String(lead.activeMonthsCount))
     .split('{maxActiveMonths}').join(String(maxActiveMonths ?? 3))
     .split('{recentHistory}').join(historyText)
+
+  const hardRules = `
+
+ЖЁСТКИЕ ОГРАНИЧЕНИЯ (обязательно соблюдай):
+- Заметки менеджера о запросе клиента (документы, КП, образцы, вопросы) = работа ЕЩЁ впереди. Не пиши, будто уже всё отправлено или клиенту уже ответили.
+- Не выдавай готовый «ответ клиенту» так, будто данные уже собраны и отправлены.
+- Если клиент «на паузе» / в статусе ожидания — учти, чего ждём; дай совет или напоминание, не ломай паузу без причины.
+- Не дублируй уже запланированный менеджером следующий шаг.
+- Сначала проанализируй этап, ожидание, историю и сроки, потом одну короткую задачу или совет.`
+
+  return `${filled}${hardRules}`
+}
+
+function hasPlannedNextStep(client) {
+  return Boolean(String(client.nextStep || '').trim())
 }
 
 const DEFAULT_PROMPT = `Ты помощник менеджера по продажам в текстильной компании BAHMAL HOME (Узбекистан).
@@ -182,6 +197,7 @@ async function analyzeLeadWithGroq(groq, lead, config) {
 
 function detectTaskType(taskText, lead) {
   const text = String(taskText || '').toLowerCase()
+  if (lead.waitStatus) return 'wait_advice'
   if (text.includes('трек') || text.includes('посылк') || text.includes('почт')) {
     return 'check_delivery'
   }
@@ -197,7 +213,26 @@ function detectTaskType(taskText, lead) {
   return 'follow_up'
 }
 
-async function saveAiTask(db, lead, taskText, taskType, todayStr) {
+function detectTaskKind(taskText, taskType, lead) {
+  const text = String(taskText || '').toLowerCase()
+  if (
+    text.includes('напиши клиенту') ||
+    text.includes('текст сообщения') ||
+    text.includes('черновик') ||
+    text.includes('ответ клиенту')
+  ) {
+    return 'draft_reply'
+  }
+  if (lead.waitStatus || taskType === 'wait_advice' || text.includes('совет')) {
+    return 'tip'
+  }
+  if (taskType === 'send_reminder' || taskType === 'reactivate' || text.includes('напомн')) {
+    return 'reminder'
+  }
+  return 'action'
+}
+
+async function saveAiTask(db, lead, taskText, taskType, taskKind, todayStr) {
   const existingTasks = await db
     .collection('ai_tasks')
     .where('clientId', '==', lead.clientId)
@@ -219,6 +254,7 @@ async function saveAiTask(db, lead, taskText, taskType, todayStr) {
     assignedToName: lead.assignedToName,
     taskText,
     taskType,
+    kind: taskKind || 'action',
     status: 'pending',
     generatedAt: admin.firestore.FieldValue.serverTimestamp(),
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -300,6 +336,8 @@ async function runAnalysis() {
     if (client.activityStatus === 'frozen') continue
     if (!client.assignedTo) continue
     if (enabledSet.size && !enabledSet.has(client.assignedTo)) continue
+    // Manager already planned next step — do not invent another AI task
+    if (hasPlannedNextStep(client)) continue
     const daysSinceTouch = daysDiff(client.lastTouchDate, todayStr)
     if (daysSinceTouch === 0) continue
     candidates.push({ client, daysSinceTouch })
@@ -324,7 +362,8 @@ async function runAnalysis() {
       const snapshot = collectLeadSnapshot(client, history, todayStr)
       const taskText = await analyzeLeadWithGroq(groq, snapshot, config)
       const taskType = detectTaskType(taskText, snapshot)
-      const ok = await saveAiTask(db, snapshot, taskText, taskType, todayStr)
+      const taskKind = detectTaskKind(taskText, taskType, snapshot)
+      const ok = await saveAiTask(db, snapshot, taskText, taskType, taskKind, todayStr)
       if (ok) created += 1
       else skipped += 1
       await sleep(REQUEST_DELAY_MS)

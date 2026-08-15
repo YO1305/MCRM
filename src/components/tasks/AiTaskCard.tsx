@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import type { AiTask } from '@/types/aiTask.types'
-import { AI_TASK_TYPE_LABELS } from '@/types/aiTask.types'
+import { AI_TASK_KIND_LABELS, AI_TASK_TYPE_LABELS } from '@/types/aiTask.types'
 import { formatISODateShort, todayISO, toISODate } from '@/utils/dates'
 
 interface AiTaskCardProps {
@@ -35,6 +35,9 @@ export function AiTaskCard({ task, onDone, onSnooze }: AiTaskCardProps) {
     <article className="rounded-xl border border-violet-100 bg-violet-50/40 p-4 shadow-sm">
       <div className="flex flex-wrap items-center gap-2">
         <Badge variant="info">ИИ</Badge>
+        {task.kind && (
+          <Badge variant="info">{AI_TASK_KIND_LABELS[task.kind] || task.kind}</Badge>
+        )}
         <Badge variant="default">{AI_TASK_TYPE_LABELS[task.taskType] || task.taskType}</Badge>
         {task.generatedAt ? (
           <span className="text-xs text-muted">{generatedLabel(task.generatedAt)}</span>

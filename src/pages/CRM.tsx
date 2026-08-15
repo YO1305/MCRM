@@ -11,6 +11,7 @@ import { CreateClientModal } from '@/components/crm/CreateClientModal'
 import { ClientKanban } from '@/components/crm/ClientKanban'
 import { ClientListView } from '@/components/crm/ClientListView'
 import { ClientDetail } from '@/components/crm/ClientDetail'
+import { CrmAiTasksPanel } from '@/components/crm/CrmAiTasksPanel'
 import { type ClientStage, stageIsClosed, stageIsWon } from '@/constants/clientStages'
 import { useClientStages } from '@/hooks/useClientStages'
 import { POSITION_LABELS } from '@/constants/positions'
@@ -254,6 +255,8 @@ export function CRM() {
           Сумма в воронке (без архива): {stats.pipelineSum.toLocaleString('ru-RU')} сум
         </p>
       )}
+
+      <CrmAiTasksPanel />
 
       {showActivity && (
         <div className="flex flex-wrap gap-2">

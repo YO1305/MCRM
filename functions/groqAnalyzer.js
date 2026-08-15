@@ -118,7 +118,7 @@ function buildPromptFromTemplate(template, lead, maxActiveMonths) {
           .join('\n')
       : '- История пуста'
 
-  return String(template || buildPrompt(lead))
+  const filled = String(template || buildPrompt(lead))
     .split('{clientName}').join(lead.clientName)
     .split('{company}').join(lead.company || 'не указана')
     .split('{category}').join(lead.category || 'не указана')
@@ -131,6 +131,17 @@ function buildPromptFromTemplate(template, lead, maxActiveMonths) {
     .split('{activeMonthsCount}').join(String(lead.activeMonthsCount))
     .split('{maxActiveMonths}').join(String(maxActiveMonths ?? 3))
     .split('{recentHistory}').join(historyText)
+
+  const hardRules = `
+
+ЖЁСТКИЕ ОГРАНИЧЕНИЯ (обязательно соблюдай):
+- Заметки менеджера о запросе клиента (документы, КП, образцы, вопросы) = работа ЕЩЁ впереди. Не пиши, будто уже всё отправлено или клиенту уже ответили.
+- Не выдавай готовый «ответ клиенту» так, будто данные уже собраны и отправлены.
+- Если клиент «на паузе» / в статусе ожидания — учти, чего ждём; дай совет или напоминание, не ломай паузу без причины.
+- Не дублируй уже запланированный менеджером следующий шаг.
+- Сначала проанализируй этап, ожидание, историю и сроки, потом одну короткую задачу или совет.`
+
+  return `${filled}${hardRules}`
 }
 
 async function analyzeLeadWithGroq(groq, lead, config = {}) {
@@ -155,6 +166,7 @@ async function analyzeLeadWithGroq(groq, lead, config = {}) {
 
 function detectTaskType(taskText, lead) {
   const text = String(taskText || '').toLowerCase()
+  if (lead.waitStatus) return 'wait_advice'
   if (text.includes('трек') || text.includes('посылк') || text.includes('почт')) {
     return 'check_delivery'
   }
@@ -170,7 +182,26 @@ function detectTaskType(taskText, lead) {
   return 'follow_up'
 }
 
-async function saveAiTask(db, lead, taskText, taskType, todayStr) {
+function detectTaskKind(taskText, taskType, lead) {
+  const text = String(taskText || '').toLowerCase()
+  if (
+    text.includes('напиши клиенту') ||
+    text.includes('текст сообщения') ||
+    text.includes('черновик') ||
+    text.includes('ответ клиенту')
+  ) {
+    return 'draft_reply'
+  }
+  if (lead.waitStatus || taskType === 'wait_advice' || text.includes('совет')) {
+    return 'tip'
+  }
+  if (taskType === 'send_reminder' || taskType === 'reactivate' || text.includes('напомн')) {
+    return 'reminder'
+  }
+  return 'action'
+}
+
+async function saveAiTask(db, lead, taskText, taskType, taskKind, todayStr) {
   const existingTasks = await db
     .collection('ai_tasks')
     .where('clientId', '==', lead.clientId)
@@ -196,6 +227,7 @@ async function saveAiTask(db, lead, taskText, taskType, todayStr) {
     assignedToName: lead.assignedToName,
     taskText,
     taskType,
+    kind: taskKind || 'action',
     status: 'pending',
     generatedAt: FieldValue.serverTimestamp(),
     createdAt: FieldValue.serverTimestamp(),
@@ -230,6 +262,7 @@ async function runDailyAiLeadAnalysis(db, apiKey) {
     if (client.activityStatus === 'frozen') return false
     if (!client.assignedTo) return false
     if (enabledSet.size && !enabledSet.has(client.assignedTo)) return false
+    if (String(client.nextStep || '').trim()) return false
     return true
   })
 
@@ -262,7 +295,8 @@ async function runDailyAiLeadAnalysis(db, apiKey) {
           maxActiveMonths: cfg.maxActiveMonths ?? 3,
         })
         const taskType = detectTaskType(taskText, snapshot)
-        await saveAiTask(db, snapshot, taskText, taskType, todayStr)
+        const taskKind = detectTaskKind(taskText, taskType, snapshot)
+        await saveAiTask(db, snapshot, taskText, taskType, taskKind, todayStr)
         await sleep(REQUEST_DELAY_MS)
       } catch (error) {
         console.error(`Error processing lead ${client.id}:`, error)

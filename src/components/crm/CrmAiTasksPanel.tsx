@@ -15,11 +15,16 @@ const FILTERS: { key: KindFilter; label: string }[] = [
   { key: 'action', label: AI_TASK_KIND_LABELS.action },
 ]
 
+interface CrmAiTasksPanelProps {
+  /** Open lead card inside CRM without leaving the page */
+  onOpenClient?: (clientId: string) => void
+}
+
 /**
- * AI lead tasks block for CRM — reminders, tips, draft replies, actions.
+ * Full CRM section: AI tips / reminders / actions by lead.
  */
-export function CrmAiTasksPanel() {
-  const { pending, markDone, snooze, loading } = useAiTasks()
+export function CrmAiTasksPanel({ onOpenClient }: CrmAiTasksPanelProps) {
+  const { pending, pendingCount, markDone, snooze, loading } = useAiTasks()
   const [kind, setKind] = useState<KindFilter>('all')
 
   const filtered = useMemo(() => {
@@ -27,22 +32,20 @@ export function CrmAiTasksPanel() {
     return pending.filter((t) => (t.kind || 'action') === kind)
   }, [pending, kind])
 
-  if (loading || pending.length === 0) return null
-
   return (
-    <section className="space-y-3 rounded-xl border border-violet-100 bg-violet-50/40 p-4">
+    <section className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
-          <h2 className="flex items-center gap-2 text-base font-semibold text-text">
-            <Brain className="h-4 w-4 text-violet-700" />
-            Задачи по лидам · ИИ
+          <h2 className="flex items-center gap-2 text-lg font-semibold text-text">
+            <Brain className="h-5 w-5 text-violet-700" />
+            ИИ помощник по лидам
           </h2>
-          <p className="mt-0.5 text-xs text-muted">
-            Что сделать по клиенту: напоминания, советы и действия (без готовых писем клиенту)
+          <p className="mt-0.5 text-sm text-muted">
+            Напоминания, советы и действия. Воронка при этом отдельным разделом — здесь только ИИ.
           </p>
         </div>
         <Link to="/tasks" className="text-xs font-medium text-secondary hover:underline">
-          Все задачи
+          Обычные задачи
         </Link>
       </div>
 
@@ -55,18 +58,29 @@ export function CrmAiTasksPanel() {
             className={`rounded-lg px-2.5 py-1 text-xs font-medium ${
               kind === f.key
                 ? 'bg-violet-700 text-white'
-                : 'bg-white text-muted shadow-sm hover:text-text'
+                : 'bg-surface text-muted shadow-sm hover:text-text'
             }`}
           >
             {f.label}
             {f.key === 'all'
-              ? ` · ${pending.length}`
+              ? ` · ${pendingCount}`
               : ` · ${pending.filter((t) => (t.kind || 'action') === f.key).length}`}
           </button>
         ))}
       </div>
 
-      {filtered.length === 0 ? (
+      {loading ? (
+        <div className="flex justify-center py-16">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-violet-600 border-t-transparent" />
+        </div>
+      ) : pending.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-violet-200 bg-violet-50/30 px-4 py-12 text-center">
+          <p className="text-sm font-medium text-text">Пока нет советов от ИИ</p>
+          <p className="mt-1 text-xs text-muted">
+            Когда появятся задачи по лидам без следующего шага — они отобразятся здесь.
+          </p>
+        </div>
+      ) : filtered.length === 0 ? (
         <p className="text-sm text-muted">В этой категории пока пусто</p>
       ) : (
         <div className="grid gap-3 lg:grid-cols-2">
@@ -74,6 +88,7 @@ export function CrmAiTasksPanel() {
             <AiTaskCard
               key={task.id}
               task={task}
+              onOpenClient={onOpenClient}
               onDone={(id) => {
                 void markDone(id).catch((err) => {
                   console.error(err)

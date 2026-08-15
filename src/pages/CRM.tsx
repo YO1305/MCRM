@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { LayoutGrid, List, Plus, Search } from 'lucide-react'
+import { Brain, LayoutGrid, List, Plus, Search } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { useRole } from '@/hooks/useRole'
 import { useClients } from '@/hooks/useClients'
 import { useUsers } from '@/hooks/useUsers'
 import { useDeletionRequests } from '@/hooks/useDeletionRequests'
+import { useAiTasks } from '@/hooks/useAiTasks'
 import { Button } from '@/components/ui/Button'
 import { CreateClientModal } from '@/components/crm/CreateClientModal'
 import { ClientKanban } from '@/components/crm/ClientKanban'
@@ -21,6 +22,7 @@ import type { ActivityStatus, Client } from '@/types/client.types'
 import { canSeeLeadActivity, resolveActivityStatus } from '@/utils/leadActivity'
 import { useAiConfig } from '@/hooks/useAiConfig'
 
+type CrmSection = 'funnel' | 'ai'
 type ViewMode = 'list' | 'kanban'
 type ScopeFilter = 'active' | 'today' | 'overdue' | 'deal' | 'archive' | 'all'
 
@@ -49,7 +51,9 @@ export function CRM() {
   const canManage = canAccess('crm')
   const { users, loading: usersLoading } = useUsers(canManage && isAdmin)
   const { pipeline } = useClientStages()
+  const { pendingCount } = useAiTasks()
 
+  const [section, setSection] = useState<CrmSection>('funnel')
   const [view, setView] = useState<ViewMode>('kanban')
   const [scope, setScope] = useState<ScopeFilter>('active')
   const [stageFilter, setStageFilter] = useState<ClientStage | 'all'>('all')
@@ -77,10 +81,25 @@ export function CRM() {
   useEffect(() => {
     const id = searchParams.get('client')
     if (id) setSelectedId(id)
+    const tab = searchParams.get('tab')
+    if (tab === 'ai') setSection('ai')
+    else if (tab === 'funnel') setSection('funnel')
   }, [searchParams])
+
+  function setCrmSection(next: CrmSection) {
+    setSection(next)
+    const params = new URLSearchParams(searchParams)
+    if (next === 'ai') params.set('tab', 'ai')
+    else params.delete('tab')
+    setSearchParams(params, { replace: true })
+  }
 
   function openClient(client: Client) {
     setSelectedId(client.id)
+  }
+
+  function openClientById(clientId: string) {
+    setSelectedId(clientId)
   }
 
   function closeClient() {
@@ -194,45 +213,93 @@ export function CRM() {
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-text">CRM · Воронка</h1>
+          <h1 className="text-2xl font-bold text-text">CRM</h1>
           <p className="mt-1 text-sm text-muted">
-            {isAdmin
-              ? `Активных: ${stats.active} · контактов сегодня: ${stats.today}`
-              : 'Ваши клиенты и лиды'}
-            {stats.overdue > 0 ? ` · просрок контакта: ${stats.overdue}` : ''}
+            {section === 'ai'
+              ? 'Советы и действия ИИ по лидам'
+              : isAdmin
+                ? `Активных: ${stats.active} · контактов сегодня: ${stats.today}`
+                : 'Ваши клиенты и лиды'}
+            {section === 'funnel' && stats.overdue > 0
+              ? ` · просрок контакта: ${stats.overdue}`
+              : ''}
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <Button type="button" onClick={() => setCreateOpen(true)}>
-            <Plus className="h-4 w-4" />
-            Новый клиент
-          </Button>
-          <div className="flex rounded-lg border border-gray-200 bg-surface p-1">
-            <button
-              type="button"
-              onClick={() => setView('kanban')}
-              className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium ${
-                view === 'kanban' ? 'bg-primary text-white' : 'text-muted hover:text-text'
-              }`}
-            >
-              <LayoutGrid className="h-3.5 w-3.5" />
-              Воронка
-            </button>
-            <button
-              type="button"
-              onClick={() => setView('list')}
-              className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium ${
-                view === 'list' ? 'bg-primary text-white' : 'text-muted hover:text-text'
-              }`}
-            >
-              <List className="h-3.5 w-3.5" />
-              Список
-            </button>
-          </div>
+          {section === 'funnel' && (
+            <>
+              <Button type="button" onClick={() => setCreateOpen(true)}>
+                <Plus className="h-4 w-4" />
+                Новый клиент
+              </Button>
+              <div className="flex rounded-lg border border-gray-200 bg-surface p-1">
+                <button
+                  type="button"
+                  onClick={() => setView('kanban')}
+                  className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium ${
+                    view === 'kanban' ? 'bg-primary text-white' : 'text-muted hover:text-text'
+                  }`}
+                >
+                  <LayoutGrid className="h-3.5 w-3.5" />
+                  Канбан
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setView('list')}
+                  className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium ${
+                    view === 'list' ? 'bg-primary text-white' : 'text-muted hover:text-text'
+                  }`}
+                >
+                  <List className="h-3.5 w-3.5" />
+                  Список
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => setCrmSection('funnel')}
+          className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium ${
+            section === 'funnel'
+              ? 'bg-primary text-white'
+              : 'bg-surface text-muted shadow-sm hover:text-text'
+          }`}
+        >
+          <LayoutGrid className="h-4 w-4" />
+          Воронка
+        </button>
+        <button
+          type="button"
+          onClick={() => setCrmSection('ai')}
+          className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium ${
+            section === 'ai'
+              ? 'bg-violet-700 text-white'
+              : 'bg-surface text-muted shadow-sm hover:text-text'
+          }`}
+        >
+          <Brain className="h-4 w-4" />
+          ИИ помощник
+          {pendingCount > 0 && (
+            <span
+              className={`rounded-md px-1.5 py-0.5 text-[11px] font-semibold ${
+                section === 'ai' ? 'bg-white/20 text-white' : 'bg-violet-100 text-violet-800'
+              }`}
+            >
+              {pendingCount}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {section === 'ai' ? (
+        <CrmAiTasksPanel onOpenClient={openClientById} />
+      ) : (
+        <>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <StatChip label="Всего" value={stats.total} />
         <StatChip label="В работе" value={stats.active} tone="secondary" />
@@ -255,8 +322,6 @@ export function CRM() {
           Сумма в воронке (без архива): {stats.pipelineSum.toLocaleString('ru-RU')} сум
         </p>
       )}
-
-      <CrmAiTasksPanel />
 
       {showActivity && (
         <div className="flex flex-wrap gap-2">
@@ -441,6 +506,8 @@ export function CRM() {
             ? ` · ${POSITION_LABELS[user?.position || 'head']}`
             : ''}
         </p>
+      )}
+        </>
       )}
 
       <ClientDetail

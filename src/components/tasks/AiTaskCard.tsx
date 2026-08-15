@@ -9,6 +9,7 @@ interface AiTaskCardProps {
   task: AiTask
   onDone: (taskId: string) => void
   onSnooze: (taskId: string) => void
+  onOpenClient?: (clientId: string) => void
 }
 
 function generatedLabel(value: unknown): string {
@@ -30,7 +31,7 @@ function generatedLabel(value: unknown): string {
   return `${formatISODateShort(iso)} · ${time}`
 }
 
-export function AiTaskCard({ task, onDone, onSnooze }: AiTaskCardProps) {
+export function AiTaskCard({ task, onDone, onSnooze, onOpenClient }: AiTaskCardProps) {
   return (
     <article className="rounded-xl border border-violet-100 bg-violet-50/40 p-4 shadow-sm">
       <div className="flex flex-wrap items-center gap-2">
@@ -44,12 +45,22 @@ export function AiTaskCard({ task, onDone, onSnooze }: AiTaskCardProps) {
         ) : null}
       </div>
 
-      <Link
-        to={`/crm?client=${task.clientId}`}
-        className="mt-2 block text-sm font-semibold text-secondary hover:underline"
-      >
-        {task.clientName}
-      </Link>
+      {onOpenClient ? (
+        <button
+          type="button"
+          onClick={() => onOpenClient(task.clientId)}
+          className="mt-2 block text-left text-sm font-semibold text-secondary hover:underline"
+        >
+          {task.clientName}
+        </button>
+      ) : (
+        <Link
+          to={`/crm?client=${task.clientId}`}
+          className="mt-2 block text-sm font-semibold text-secondary hover:underline"
+        >
+          {task.clientName}
+        </Link>
+      )}
 
       <p className="mt-2 text-sm text-text">{task.taskText}</p>
 

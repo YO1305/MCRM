@@ -38,6 +38,7 @@ import { clientStepOverdue, visitPrepareDate } from '@/utils/clientWork'
 import { ActivityBadge } from '@/components/crm/ActivityBadge'
 import { calculateActiveMonths } from '@/utils/dateUtils'
 import { canSeeLeadActivity, resolveActivityStatus, resolveOpenedMonth } from '@/utils/leadActivity'
+import { getCurrentMonth } from '@/utils/dates'
 
 interface ClientDetailProps {
   client: Client | null
@@ -64,6 +65,7 @@ interface ClientDetailProps {
       gpTypes: string[]
       category: LeadCategory | null
       categories: LeadCategory[]
+      openedMonth?: string | null
     },
     previousStage: ClientStage,
   ) => Promise<void>
@@ -163,6 +165,7 @@ export function ClientDetail({
   const [notes, setNotes] = useState('')
   const [nextContactDate, setNextContactDate] = useState('')
   const [dealAmount, setDealAmount] = useState('')
+  const [openedMonth, setOpenedMonth] = useState('')
   const [saving, setSaving] = useState(false)
   const [historyText, setHistoryText] = useState('')
   const [leadNote, setLeadNote] = useState('')
@@ -211,6 +214,7 @@ export function ClientDetail({
     setNotes(client.notes || '')
     setNextContactDate(client.nextContactDate || '')
     setDealAmount(client.dealAmount != null ? String(client.dealAmount) : '')
+    setOpenedMonth(resolveOpenedMonth(client))
     setNextStepText(client.nextStep || '')
     setNextStepDeadline(client.nextStepDeadline || '')
     setVisitDate(client.visitDate || '')
@@ -292,6 +296,10 @@ export function ClientDetail({
           notes: notes.trim(),
           nextContactDate: nextContactDate || null,
           dealAmount: dealAmount ? Number(dealAmount) : null,
+          openedMonth:
+            isAdmin || canSeeLeadActivity(user)
+              ? openedMonth.trim() || getCurrentMonth()
+              : undefined,
           country: country || null,
           products,
           fabricTypes: products.includes('fabric') ? fabricTypes : [],
@@ -1046,6 +1054,20 @@ export function ClientDetail({
                   value={dealAmount}
                   onChange={(e) => setDealAmount(e.target.value)}
                 />
+                {(isAdmin || canSeeLeadActivity(user)) && (
+                  <div>
+                    <Input
+                      label="Месяц открытия лида (реальный старт)"
+                      type="month"
+                      value={openedMonth}
+                      onChange={(e) => setOpenedMonth(e.target.value)}
+                    />
+                    <p className="mt-1 text-xs text-muted">
+                      Если карточку завели в CRM позже — укажите месяц, когда реально начали работу
+                      (например 2026-05). От этого считаются «Новый / Активный / Заморожен».
+                    </p>
+                  </div>
+                )}
                 <Textarea
                   label="Заметки"
                   value={notes}

@@ -55,7 +55,11 @@ export function buildActivityFields(client: Client): {
   activityStatus: ActivityStatus
   activeMonthsCount: number
 } {
-  const openedMonth = resolveOpenedMonth(client)
+  // Keep an already saved openedMonth — do not reset it from CRM import date.
+  const openedMonth =
+    client.openedMonth && /^\d{4}-\d{2}$/.test(client.openedMonth)
+      ? client.openedMonth
+      : resolveOpenedMonth(client)
   const merged = { ...client, openedMonth }
   return {
     openedMonth,

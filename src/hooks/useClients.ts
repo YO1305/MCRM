@@ -327,6 +327,7 @@ export function useClients() {
       gpTypes: string[]
       category: LeadCategory | null
       categories: LeadCategory[]
+      openedMonth: string | null
     }>,
     opts?: { previousStage?: ClientStage },
   ) {

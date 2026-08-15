@@ -25,7 +25,7 @@ export function LeadActivityScanner() {
   useEffect(() => {
     if (!user || viewAsUser || loading || usersLoading) return
     const today = todayISO()
-    const storageKey = `leadActivityScan:v2:${user.id}:${today}`
+    const storageKey = `leadActivityScan:v3:${user.id}:${today}`
     const runKey = `${today}:${clients.length}`
     if (scanned.current === runKey) return
     if (typeof localStorage !== 'undefined' && localStorage.getItem(storageKey) === '1') {

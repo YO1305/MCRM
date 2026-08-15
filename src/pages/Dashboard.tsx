@@ -11,6 +11,7 @@ import { subscribeToCollection } from '@/firebase/firestore'
 import { runAiLeadAnalysisNow } from '@/firebase/callable'
 import type { Task } from '@/types/task.types'
 import { canSeeLeadActivity, countLeadActivity } from '@/utils/leadActivity'
+import { syncOpenedMonthsFromHistory } from '@/utils/syncOpenedMonths'
 import { todayISO, toISODate } from '@/utils/dates'
 
 export function Dashboard() {
@@ -21,6 +22,7 @@ export function Dashboard() {
   const activityCounts = useMemo(() => countLeadActivity(clients), [clients])
   const [tasks, setTasks] = useState<Task[]>([])
   const [aiRunning, setAiRunning] = useState(false)
+  const [syncingMonths, setSyncingMonths] = useState(false)
 
   useEffect(() => {
     if (!user) return
@@ -125,14 +127,56 @@ export function Dashboard() {
 
       {showActivity && (
         <Card className="space-y-3">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-lg font-semibold text-text">Лиды по активности</h2>
-            <Link to="/crm" className="text-sm font-medium text-secondary hover:underline">
-              Открыть CRM
-            </Link>
+            <div className="flex flex-wrap items-center gap-2">
+              {isAdmin && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  disabled={syncingMonths}
+                  onClick={() => {
+                    if (
+                      !confirm(
+                        'Проставить всем открытым лидам месяц открытия по самой ранней записи в истории? Это нужно, если карточки завели в CRM позже реального старта.',
+                      )
+                    ) {
+                      return
+                    }
+                    void (async () => {
+                      setSyncingMonths(true)
+                      try {
+                        const result = await syncOpenedMonthsFromHistory(clients, {
+                          overwrite: true,
+                        })
+                        alert(
+                          `Готово: обновлено ${result.updated}, пропущено ${result.skipped}, ошибок ${result.errors}`,
+                        )
+                      } catch (err) {
+                        console.error(err)
+                        alert(
+                          err instanceof Error
+                            ? err.message
+                            : 'Не удалось проставить месяцы открытия',
+                        )
+                      } finally {
+                        setSyncingMonths(false)
+                      }
+                    })()
+                  }}
+                >
+                  {syncingMonths ? 'Считаю…' : 'Проставить месяцы по истории'}
+                </Button>
+              )}
+              <Link to="/crm" className="text-sm font-medium text-secondary hover:underline">
+                Открыть CRM
+              </Link>
+            </div>
           </div>
           <p className="text-xs text-muted">
-            «Новый» = открыт в этом месяце. «Активный» — со 2-го месяца при нормальной работе.
+            «Новый» = 1-й месяц с даты открытия лида (не дата занесения в CRM). Если все
+            завели в августе — укажите реальный месяц в карточке или кнопкой выше.
           </p>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <div>

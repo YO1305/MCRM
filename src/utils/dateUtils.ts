@@ -50,12 +50,15 @@ export function openedMonthFromCreatedAt(createdAt: unknown): string | null {
   return null
 }
 
-/** Prefer real createdAt so a bad openedMonth stamp cannot lock everyone as "new". */
+/** Prefer explicit openedMonth (real lead start). Fall back to createdAt only if empty. */
 export function resolveOpenedMonthFromClient(client: {
   openedMonth?: string | null
   createdAt?: unknown
 }): string {
-  return openedMonthFromCreatedAt(client.createdAt) || client.openedMonth || getCurrentMonth()
+  if (client.openedMonth && /^\d{4}-\d{2}$/.test(client.openedMonth)) {
+    return client.openedMonth
+  }
+  return openedMonthFromCreatedAt(client.createdAt) || getCurrentMonth()
 }
 
 export { todayISO, parseISODate }

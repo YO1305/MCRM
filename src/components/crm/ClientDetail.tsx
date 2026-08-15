@@ -296,10 +296,7 @@ export function ClientDetail({
           notes: notes.trim(),
           nextContactDate: nextContactDate || null,
           dealAmount: dealAmount ? Number(dealAmount) : null,
-          openedMonth:
-            isAdmin || canSeeLeadActivity(user)
-              ? openedMonth.trim() || getCurrentMonth()
-              : undefined,
+          openedMonth: openedMonth.trim() || getCurrentMonth(),
           country: country || null,
           products,
           fabricTypes: products.includes('fabric') ? fabricTypes : [],
@@ -1054,20 +1051,20 @@ export function ClientDetail({
                   value={dealAmount}
                   onChange={(e) => setDealAmount(e.target.value)}
                 />
-                {(isAdmin || canSeeLeadActivity(user)) && (
-                  <div>
-                    <Input
-                      label="Месяц открытия лида (реальный старт)"
-                      type="month"
-                      value={openedMonth}
-                      onChange={(e) => setOpenedMonth(e.target.value)}
-                    />
-                    <p className="mt-1 text-xs text-muted">
-                      Если карточку завели в CRM позже — укажите месяц, когда реально начали работу
-                      (например 2026-05). От этого считаются «Новый / Активный / Заморожен».
-                    </p>
-                  </div>
-                )}
+                <div>
+                  <Input
+                    label="Месяц открытия лида (реальный старт)"
+                    type="month"
+                    value={openedMonth}
+                    onChange={(e) => setOpenedMonth(e.target.value)}
+                    disabled={fieldDisabled}
+                  />
+                  <p className="mt-1 text-xs text-muted">
+                    Укажите месяц, когда реально начали общение с клиентом (не когда занесли в
+                    CRM). Например 2026-05. От этого считаются статусы «Новый / Активный /
+                    Заморожен».
+                  </p>
+                </div>
                 <Textarea
                   label="Заметки"
                   value={notes}

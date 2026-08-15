@@ -3,15 +3,18 @@ import { Link } from 'react-router-dom'
 import { where } from 'firebase/firestore'
 import { useAuth } from '@/hooks/useAuth'
 import { useClients } from '@/hooks/useClients'
+import { useAiTasks } from '@/hooks/useAiTasks'
 import { Card } from '@/components/ui/Card'
 import { POSITION_LABELS } from '@/constants/positions'
 import { subscribeToCollection } from '@/firebase/firestore'
 import type { Task } from '@/types/task.types'
 import { canSeeLeadActivity, countLeadActivity } from '@/utils/leadActivity'
+import { todayISO, toISODate } from '@/utils/dates'
 
 export function Dashboard() {
   const { user, isAdmin } = useAuth()
   const { clients } = useClients()
+  const { tasks: aiTasks } = useAiTasks()
   const showActivity = isAdmin || canSeeLeadActivity(user)
   const activityCounts = useMemo(() => countLeadActivity(clients), [clients])
   const [tasks, setTasks] = useState<Task[]>([])
@@ -22,7 +25,41 @@ export function Dashboard() {
     return subscribeToCollection<Task>('tasks', constraints, setTasks)
   }, [user, isAdmin])
 
-  const today = new Date().toISOString().slice(0, 10)
+  const today = todayISO()
+
+  const aiOverview = useMemo(() => {
+    if (!isAdmin) return null
+    const isToday = (value: unknown) => {
+      if (!value) return false
+      if (typeof value === 'object' && value !== null && 'seconds' in value) {
+        return toISODate(new Date((value as { seconds: number }).seconds * 1000)) === today
+      }
+      if (typeof value === 'object' && value !== null && 'toDate' in value) {
+        try {
+          return toISODate((value as { toDate: () => Date }).toDate()) === today
+        } catch {
+          return false
+        }
+      }
+      return false
+    }
+    const todays = aiTasks.filter((t) => isToday(t.generatedAt) || t.status === 'pending')
+    const byManager = new Map<string, { name: string; total: number; done: number }>()
+    for (const t of todays) {
+      const row = byManager.get(t.assignedTo) || {
+        name: t.assignedToName || 'Менеджер',
+        total: 0,
+        done: 0,
+      }
+      row.total += 1
+      if (t.status === 'done') row.done += 1
+      byManager.set(t.assignedTo, row)
+    }
+    const rows = [...byManager.values()].sort((a, b) => a.name.localeCompare(b.name, 'ru'))
+    const total = rows.reduce((s, r) => s + r.total, 0)
+    const done = rows.reduce((s, r) => s + r.done, 0)
+    return { rows, total, done }
+  }, [aiTasks, isAdmin, today])
 
   const stats = useMemo(() => {
     const active = tasks.filter((t) => t.status !== 'done')
@@ -110,6 +147,39 @@ export function Dashboard() {
               <p className="mt-1 text-2xl font-bold text-gray-600">{activityCounts.frozen}</p>
             </div>
           </div>
+        </Card>
+      )}
+
+      {isAdmin && aiOverview && (
+        <Card className="space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-lg font-semibold text-text">ИИ задачи на сегодня</h2>
+            <Link to="/tasks" className="text-sm font-medium text-secondary hover:underline">
+              К задачам
+            </Link>
+          </div>
+          {aiOverview.rows.length === 0 ? (
+            <p className="text-sm text-muted">
+              Пока нет ИИ-задач. Появятся после утреннего запуска Cloud Function (нужен ключ Groq).
+            </p>
+          ) : (
+            <ul className="space-y-2">
+              {aiOverview.rows.map((row) => (
+                <li
+                  key={row.name}
+                  className="flex items-center justify-between gap-3 text-sm text-text"
+                >
+                  <span className="font-medium">{row.name}</span>
+                  <span className="text-muted">
+                    {row.total} задач ({row.done} выполнено)
+                  </span>
+                </li>
+              ))}
+              <li className="border-t border-gray-100 pt-2 text-sm font-medium text-text">
+                Всего: {aiOverview.total} задач, {aiOverview.done} выполнено
+              </li>
+            </ul>
+          )}
         </Card>
       )}
 

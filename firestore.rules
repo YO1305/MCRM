@@ -303,5 +303,12 @@ service cloud.firestore {
         && request.resource.data.title is string;
       allow update, delete: if isAdmin() || resource.data.userId == request.auth.uid;
     }
+
+    /** AI-generated daily tasks for lead managers (created by Cloud Functions) */
+    match /ai_tasks/{taskId} {
+      allow read: if isAdmin() || resource.data.assignedTo == request.auth.uid;
+      allow update: if isAdmin() || resource.data.assignedTo == request.auth.uid;
+      allow create, delete: if isAdmin();
+    }
   }
 }

@@ -1,10 +1,14 @@
 const { onCall, HttpsError } = require('firebase-functions/v2/https')
 const { onSchedule } = require('firebase-functions/v2/scheduler')
+const { defineSecret } = require('firebase-functions/params')
 const { initializeApp } = require('firebase-admin/app')
 const { getAuth } = require('firebase-admin/auth')
 const { getFirestore, FieldValue } = require('firebase-admin/firestore')
+const { runDailyAiLeadAnalysis } = require('./groqAnalyzer')
 
 initializeApp()
+
+const groqApiKey = defineSecret('GROQ_API_KEY')
 
 /**
  * Admin-only: change employee login email and/or password in Firebase Auth
@@ -275,5 +279,44 @@ exports.dailyLeadActivityCheck = onSchedule(
         }
       }
     }
+  },
+)
+
+/** Daily 08:15 Tashkent — Groq AI tasks for active leads */
+exports.dailyAiLeadAnalysis = onSchedule(
+  {
+    schedule: '15 8 * * *',
+    timeZone: 'Asia/Tashkent',
+    region: 'us-central1',
+    secrets: [groqApiKey],
+    timeoutSeconds: 540,
+    memory: '512MiB',
+  },
+  async () => {
+    const db = getFirestore()
+    await runDailyAiLeadAnalysis(db, groqApiKey.value())
+  },
+)
+
+/** Admin-only: run AI lead analysis now (for testing) */
+exports.runAiLeadAnalysisNow = onCall(
+  {
+    region: 'us-central1',
+    cors: true,
+    secrets: [groqApiKey],
+    timeoutSeconds: 540,
+    memory: '512MiB',
+  },
+  async (request) => {
+    if (!request.auth?.uid) {
+      throw new HttpsError('unauthenticated', 'Нужно войти в систему')
+    }
+    const db = getFirestore()
+    const caller = await db.collection('users').doc(request.auth.uid).get()
+    if (!caller.exists || caller.data()?.role !== 'admin') {
+      throw new HttpsError('permission-denied', 'Только администратор')
+    }
+    await runDailyAiLeadAnalysis(db, groqApiKey.value())
+    return { ok: true }
   },
 )

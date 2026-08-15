@@ -19,6 +19,7 @@ import {
   X,
 } from 'lucide-react'
 import { useRole } from '@/hooks/useRole'
+import { useAiTasks } from '@/hooks/useAiTasks'
 import type { AppSection } from '@/constants/access'
 
 interface NavItem {
@@ -54,6 +55,7 @@ interface SidebarProps {
 
 export function Sidebar({ open, onClose }: SidebarProps) {
   const { canAccess } = useRole()
+  const { pendingCount } = useAiTasks()
   const visibleItems = NAV_ITEMS.filter((item) => canAccess(item.section))
 
   return (
@@ -103,7 +105,12 @@ export function Sidebar({ open, onClose }: SidebarProps) {
               }
             >
               <item.icon size={18} />
-              {item.label}
+              <span className="flex-1">{item.label}</span>
+              {item.to === '/tasks' && pendingCount > 0 && (
+                <span className="rounded-md bg-violet-400/90 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                  {pendingCount}
+                </span>
+              )}
             </NavLink>
           ))}
         </nav>

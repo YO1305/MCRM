@@ -3,6 +3,7 @@ import { CalendarDays, Download, LayoutGrid, List, Play, Plus, Search } from 'lu
 import { useAuth } from '@/hooks/useAuth'
 import { useRole } from '@/hooks/useRole'
 import { useTasks } from '@/hooks/useTasks'
+import { useAiTasks } from '@/hooks/useAiTasks'
 import { useUsers } from '@/hooks/useUsers'
 import { useNotifications } from '@/hooks/useNotifications'
 import { Button } from '@/components/ui/Button'
@@ -11,6 +12,7 @@ import { TaskKanban } from '@/components/tasks/TaskKanban'
 import { TaskList } from '@/components/tasks/TaskList'
 import { TaskCalendar } from '@/components/tasks/TaskCalendar'
 import { TaskDetail } from '@/components/tasks/TaskDetail'
+import { AiTaskCard } from '@/components/tasks/AiTaskCard'
 import { POSITION_LABELS } from '@/constants/positions'
 import { exportTasksToExcel } from '@/utils/exportTasks'
 import { todayISO, toISODate } from '@/utils/dates'
@@ -85,6 +87,11 @@ export function Tasks() {
   const { user, isAdmin } = useAuth()
   const { canCreateTasks } = useRole()
   const { tasks, loading, error, createTasks, setStatus, updateTask, deleteTask } = useTasks()
+  const {
+    pending: aiPending,
+    markDone: markAiDone,
+    snooze: snoozeAi,
+  } = useAiTasks()
   const { users, loading: usersLoading, error: usersError } = useUsers(true)
   const { scanOverdue } = useNotifications()
   const [view, setView] = useState<ViewMode>('list')
@@ -221,6 +228,41 @@ export function Tasks() {
 
   return (
     <div className="space-y-4">
+      {aiPending.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-end justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-violet-700">
+                Задачи от ИИ · {aiPending.length}
+              </p>
+              <p className="mt-0.5 text-sm text-muted">
+                Автоподсказки по лидам на сегодня — можно выполнить или отложить
+              </p>
+            </div>
+          </div>
+          <div className="grid gap-3 lg:grid-cols-2">
+            {aiPending.map((task) => (
+              <AiTaskCard
+                key={task.id}
+                task={task}
+                onDone={(id) => {
+                  void markAiDone(id).catch((err) => {
+                    console.error(err)
+                    alert('Не удалось отметить задачу')
+                  })
+                }}
+                onSnooze={(id) => {
+                  void snoozeAi(id).catch((err) => {
+                    console.error(err)
+                    alert('Не удалось отложить задачу')
+                  })
+                }}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
       {takeToWork.length > 0 && (
         <div className="space-y-2">
           <p className="text-xs font-semibold uppercase tracking-wide text-secondary">

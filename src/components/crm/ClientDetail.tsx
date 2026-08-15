@@ -184,6 +184,7 @@ export function ClientDetail({
   const [salesMemberId, setSalesMemberId] = useState('')
   const [customWait, setCustomWait] = useState('')
   const [waitFollowUpDate, setWaitFollowUpDate] = useState(addDaysISO(todayISO(), 5))
+  const [detailTab, setDetailTab] = useState<'info' | 'tasks' | 'notes' | 'history'>('tasks')
   const [nextStepText, setNextStepText] = useState('')
   const [nextStepDeadline, setNextStepDeadline] = useState('')
   const [visitDate, setVisitDate] = useState('')
@@ -223,6 +224,7 @@ export function ClientDetail({
     setNextStepText(client.nextStep || '')
     setNextStepDeadline(client.nextStepDeadline || '')
     setWaitFollowUpDate(client.waitFollowUpDate || addDaysISO(todayISO(), 5))
+    setDetailTab('tasks')
     setVisitDate(client.visitDate || '')
     setVisitNote(client.visitNote || '')
     setHistoryText('')
@@ -599,6 +601,32 @@ export function ClientDetail({
             </div>
           )}
 
+          <div className="flex flex-wrap gap-1.5 border-b border-gray-100 pb-3">
+            {(
+              [
+                ['tasks', 'Задачи'],
+                ['info', 'Клиент'],
+                ['notes', 'Комментарии'],
+                ['history', 'История'],
+              ] as const
+            ).map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setDetailTab(key)}
+                className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
+                  detailTab === key
+                    ? 'bg-primary text-white'
+                    : 'bg-background text-muted hover:text-text'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {detailTab === 'tasks' && (
+          <>
           {/* Next step + visit */}
           <div className="grid gap-4 lg:grid-cols-2">
             <section
@@ -731,8 +759,6 @@ export function ClientDetail({
             </section>
           </div>
 
-          <div className="grid items-start gap-4 lg:grid-cols-2 lg:gap-6">
-            <div className="space-y-4">
           {/* Sales manager */}
           <section className="space-y-2 rounded-xl border border-gray-100 p-3">
             <p className="text-sm font-semibold text-text">Менеджер по продажам</p>
@@ -801,84 +827,6 @@ export function ClientDetail({
               </div>
             ) : (
               <p className="text-xs text-muted">Не назначен</p>
-            )}
-          </section>
-
-          {/* Lead comments */}
-          <section className="space-y-2 rounded-xl border border-l-4 border-gray-100 border-l-secondary p-3">
-            <p className="text-sm font-semibold text-text">Комментарии лид-менеджера</p>
-            <ul className="max-h-48 space-y-2 overflow-y-auto">
-              {leadNotes.length === 0 ? (
-                <li className="text-xs text-muted">Пока нет</li>
-              ) : (
-                leadNotes.map((e) => (
-                  <li key={e.id} className="rounded-lg bg-background px-3 py-2">
-                    <div className="flex justify-between gap-2 text-[11px] text-muted">
-                      <span>{e.authorName}</span>
-                      <span>{formatTime(e.createdAt)}</span>
-                    </div>
-                    <p className="mt-1 text-sm text-text">{e.text}</p>
-                  </li>
-                ))
-              )}
-            </ul>
-            {canLeadNote && (
-              <>
-                <Textarea
-                  value={leadNote}
-                  onChange={(e) => setLeadNote(e.target.value)}
-                  placeholder="Комментарий лид-менеджера..."
-                />
-                <Button
-                  type="button"
-                  size="sm"
-                  disabled={sending || !leadNote.trim()}
-                  onClick={() => void handleLeadNote()}
-                >
-                  Добавить
-                </Button>
-              </>
-            )}
-          </section>
-
-          {/* Sales comments */}
-          <section className="space-y-2 rounded-xl border border-l-4 border-gray-100 border-l-amber-500 p-3">
-            <p className="text-sm font-semibold text-text">Комментарии продаж</p>
-            <ul className="max-h-48 space-y-2 overflow-y-auto">
-              {salesNotes.length === 0 ? (
-                <li className="text-xs text-muted">Пока нет</li>
-              ) : (
-                salesNotes.map((e) => (
-                  <li key={e.id} className="rounded-lg bg-background px-3 py-2">
-                    <div className="flex justify-between gap-2 text-[11px] text-muted">
-                      <span>{e.authorName}</span>
-                      <span>{formatTime(e.createdAt)}</span>
-                    </div>
-                    <p className="mt-1 text-sm text-text">{e.text}</p>
-                  </li>
-                ))
-              )}
-            </ul>
-            {canSalesNote && (
-              <>
-                <Textarea
-                  value={salesNote}
-                  onChange={(e) => setSalesNote(e.target.value)}
-                  placeholder="Комментарий менеджера продаж..."
-                />
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  disabled={sending || !salesNote.trim()}
-                  onClick={() => void handleSalesNote()}
-                >
-                  Добавить
-                </Button>
-              </>
-            )}
-            {!canSalesNote && !client.salesManagerId && (
-              <p className="text-xs text-muted">Сначала подключите менеджера продаж</p>
             )}
           </section>
 
@@ -968,9 +916,93 @@ export function ClientDetail({
               </p>
             )}
           </section>
+          </>
+          )}
 
-            </div>
-            <div className="space-y-4">
+          {detailTab === 'notes' && (
+          <>
+          {/* Lead comments */}
+          <section className="space-y-2 rounded-xl border border-l-4 border-gray-100 border-l-secondary p-3">
+            <p className="text-sm font-semibold text-text">Комментарии лид-менеджера</p>
+            <ul className="max-h-48 space-y-2 overflow-y-auto">
+              {leadNotes.length === 0 ? (
+                <li className="text-xs text-muted">Пока нет</li>
+              ) : (
+                leadNotes.map((e) => (
+                  <li key={e.id} className="rounded-lg bg-background px-3 py-2">
+                    <div className="flex justify-between gap-2 text-[11px] text-muted">
+                      <span>{e.authorName}</span>
+                      <span>{formatTime(e.createdAt)}</span>
+                    </div>
+                    <p className="mt-1 text-sm text-text">{e.text}</p>
+                  </li>
+                ))
+              )}
+            </ul>
+            {canLeadNote && (
+              <>
+                <Textarea
+                  value={leadNote}
+                  onChange={(e) => setLeadNote(e.target.value)}
+                  placeholder="Комментарий лид-менеджера..."
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={sending || !leadNote.trim()}
+                  onClick={() => void handleLeadNote()}
+                >
+                  Добавить
+                </Button>
+              </>
+            )}
+          </section>
+
+          {/* Sales comments */}
+          <section className="space-y-2 rounded-xl border border-l-4 border-gray-100 border-l-amber-500 p-3">
+            <p className="text-sm font-semibold text-text">Комментарии продаж</p>
+            <ul className="max-h-48 space-y-2 overflow-y-auto">
+              {salesNotes.length === 0 ? (
+                <li className="text-xs text-muted">Пока нет</li>
+              ) : (
+                salesNotes.map((e) => (
+                  <li key={e.id} className="rounded-lg bg-background px-3 py-2">
+                    <div className="flex justify-between gap-2 text-[11px] text-muted">
+                      <span>{e.authorName}</span>
+                      <span>{formatTime(e.createdAt)}</span>
+                    </div>
+                    <p className="mt-1 text-sm text-text">{e.text}</p>
+                  </li>
+                ))
+              )}
+            </ul>
+            {canSalesNote && (
+              <>
+                <Textarea
+                  value={salesNote}
+                  onChange={(e) => setSalesNote(e.target.value)}
+                  placeholder="Комментарий менеджера продаж..."
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  disabled={sending || !salesNote.trim()}
+                  onClick={() => void handleSalesNote()}
+                >
+                  Добавить
+                </Button>
+              </>
+            )}
+            {!canSalesNote && !client.salesManagerId && (
+              <p className="text-xs text-muted">Сначала подключите менеджера продаж</p>
+            )}
+          </section>
+          </>
+          )}
+
+          {detailTab === 'info' && (
+          <>
           {/* Client info */}
           <section className="space-y-3">
             <p className="text-sm font-semibold text-text">Данные клиента</p>
@@ -1139,7 +1171,11 @@ export function ClientDetail({
               </div>
             )}
           </section>
+          </>
+          )}
 
+          {detailTab === 'history' && (
+          <>
           {/* History */}
           <section className="space-y-2 border-t border-gray-100 pt-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1339,8 +1375,8 @@ export function ClientDetail({
               </>
             )}
           </section>
-            </div>
-          </div>
+          </>
+          )}
         </div>
 
         <div className="shrink-0 space-y-3 border-t border-gray-100 px-5 py-3 sm:px-6">

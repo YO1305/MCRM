@@ -13,6 +13,7 @@ import type { Task } from '@/types/task.types'
 import { useAiConfig } from '@/hooks/useAiConfig'
 import { canSeeLeadActivity, countLeadActivity } from '@/utils/leadActivity'
 import { syncOpenedMonthsFromHistory } from '@/utils/syncOpenedMonths'
+import { clearStaleOverdueDeadlines } from '@/utils/clearStaleOverdues'
 import { todayISO, toISODate } from '@/utils/dates'
 
 export function Dashboard() {
@@ -33,6 +34,7 @@ export function Dashboard() {
   const [tasks, setTasks] = useState<Task[]>([])
   const [aiRunning, setAiRunning] = useState(false)
   const [syncingMonths, setSyncingMonths] = useState(false)
+  const [clearingOverdues, setClearingOverdues] = useState(false)
 
   useEffect(() => {
     if (!user) return
@@ -141,6 +143,7 @@ export function Dashboard() {
             <h2 className="text-lg font-semibold text-text">Лиды по активности</h2>
             <div className="flex flex-wrap items-center gap-2">
               {isAdmin && (
+                <>
                 <Button
                   type="button"
                   size="sm"
@@ -178,6 +181,44 @@ export function Dashboard() {
                 >
                   {syncingMonths ? 'Считаю…' : 'Проставить даты по истории'}
                 </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  disabled={clearingOverdues || !user}
+                  onClick={() => {
+                    if (
+                      !confirm(
+                        'Снять со всех открытых лидов старые просроки (даты контакта и незавершённые шаги до кнопки «Шаг выполнен»)? История запишется в карточку.',
+                      )
+                    ) {
+                      return
+                    }
+                    void (async () => {
+                      if (!user) return
+                      setClearingOverdues(true)
+                      try {
+                        const result = await clearStaleOverdueDeadlines(clients, {
+                          id: user.id,
+                          name: user.name,
+                        })
+                        alert(
+                          `Готово: снято контактов ${result.clearedContacts}, шагов ${result.clearedSteps}, ошибок ${result.errors}`,
+                        )
+                      } catch (err) {
+                        console.error(err)
+                        alert(
+                          err instanceof Error ? err.message : 'Не удалось очистить просроки',
+                        )
+                      } finally {
+                        setClearingOverdues(false)
+                      }
+                    })()
+                  }}
+                >
+                  {clearingOverdues ? 'Чищу…' : 'Снять старые просроки'}
+                </Button>
+                </>
               )}
               <Link to="/crm" className="text-sm font-medium text-secondary hover:underline">
                 Открыть CRM

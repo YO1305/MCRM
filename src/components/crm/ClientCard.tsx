@@ -1,4 +1,5 @@
-import { Phone, Building2, Calendar, Check, MapPin } from 'lucide-react'
+import { Building2, Check, MoreHorizontal } from 'lucide-react'
+import { useState } from 'react'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import type { Client } from '@/types/client.types'
@@ -6,13 +7,11 @@ import {
   stageIsClosed,
   stageIsWon,
   stageLabel,
-  leadKpiTrackingEnabled,
   type ClientStage,
 } from '@/constants/clientStages'
-import { stageBadge, CLIENT_SOURCES, LEAD_CATEGORIES } from '@/constants/clientMeta'
+import { stageBadge, LEAD_CATEGORIES } from '@/constants/clientMeta'
 import { countryName } from '@/constants/leadProducts'
-import { todayISO } from '@/utils/dates'
-import { clientActionDeadline, clientHasActiveStep } from '@/utils/clientWork'
+import { clientHasActiveStep, clientStepOverdue } from '@/utils/clientWork'
 import { useClientStages } from '@/hooks/useClientStages'
 import { useAuth } from '@/hooks/useAuth'
 import { ActivityBadge } from '@/components/crm/ActivityBadge'
@@ -37,29 +36,32 @@ export function ClientCard({
   const { funnel, closed: archiveStages } = useClientStages()
   const { user, isAdmin } = useAuth()
   const showActivity = isAdmin || canSeeLeadActivity(user)
-  const today = todayISO()
-  const deadline = clientActionDeadline(client)
+  const [moreOpen, setMoreOpen] = useState(false)
+
   const isArchived = stageIsClosed(client.stage)
   const won = stageIsWon(client.stage)
-  const contactOverdue = !!deadline && deadline < today && !isArchived && !won
   const stepActive = clientHasActiveStep(client)
+  const stepOverdue = clientStepOverdue(client)
 
   const stageIndex = funnel.findIndex((s) => s.value === client.stage)
-  const prevStage = stageIndex > 0 ? funnel[stageIndex - 1] : null
-  const nextStages =
-    stageIndex >= 0 ? funnel.slice(stageIndex + 1, stageIndex + 3) : funnel.slice(0, 2)
+  const nextStage =
+    stageIndex >= 0 && stageIndex < funnel.length - 1 ? funnel[stageIndex + 1] : null
   const rejectStage = closedStagesFind(archiveStages, 'rejected') || 'rejected'
   const failedStage = closedStagesFind(archiveStages, 'failed') || 'failed'
   const abandonedStage = closedStagesFind(archiveStages, 'abandoned') || 'abandoned'
 
+  const categoryKey =
+    (client.categories?.length ? client.categories[0] : null) || client.category || null
+  const categoryLabel = categoryKey ? LEAD_CATEGORIES[categoryKey] || categoryKey : null
+
   return (
     <article
-      className={`rounded-xl border bg-surface p-4 shadow-sm transition-shadow hover:shadow-md ${
-        contactOverdue ? 'border-danger/40' : 'border-gray-100'
+      className={`rounded-xl border bg-surface p-3 shadow-sm transition-shadow hover:shadow-md ${
+        stepOverdue ? 'border-danger/40' : 'border-gray-100'
       }`}
     >
       <button type="button" onClick={() => onOpen(client)} className="w-full text-left">
-        <div className="flex flex-wrap items-start gap-2">
+        <div className="flex flex-wrap items-start gap-1.5">
           <h3 className="flex-1 text-sm font-semibold text-text">{client.name}</h3>
           <Badge variant={stageBadge(client.stage)}>{stageLabel(client.stage)}</Badge>
           {showActivity && (
@@ -70,99 +72,52 @@ export function ClientCard({
           )}
         </div>
 
-        <div className="mt-2 space-y-1 text-xs text-muted">
+        <div className="mt-1.5 space-y-1 text-xs text-muted">
           {client.company && (
-            <p className="flex items-center gap-1.5">
+            <p className="flex items-center gap-1.5 truncate">
               <Building2 className="h-3 w-3 shrink-0" />
               <span className="truncate">{client.company}</span>
             </p>
           )}
-          <p className="flex items-center gap-1.5">
-            <Phone className="h-3 w-3 shrink-0" />
-            <span>{client.phone}</span>
-          </p>
-          {deadline && (
+          {stepActive && client.nextStep && (
             <p
-              className={`flex items-center gap-1.5 ${
-                contactOverdue ? 'font-medium text-danger' : ''
+              className={`line-clamp-2 rounded-md px-2 py-1 ${
+                stepOverdue ? 'bg-red-50 text-danger' : 'bg-secondary/5 text-text'
               }`}
             >
-              <Calendar className="h-3 w-3 shrink-0" />
-              <span>
-                {stepActive ? 'шаг' : 'контакт'} {deadline}
-                {contactOverdue ? ' · просрок' : ''}
-              </span>
+              {client.nextStep}
+              {client.nextStepDeadline ? ` · до ${client.nextStepDeadline}` : ''}
+              {stepOverdue ? ' · просрок' : ''}
             </p>
-          )}
-          {stepActive && client.nextStep && (
-            <p className="line-clamp-2 pl-5 text-xs text-text">{client.nextStep}</p>
           )}
         </div>
 
-        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted">
+        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-muted">
           {showAssignee && (
-            <span className="rounded-md bg-primary/10 px-2 py-0.5 font-medium text-primary">
+            <span className="rounded-md bg-primary/10 px-1.5 py-0.5 font-medium text-primary">
               {client.assignedToName}
             </span>
           )}
-          {client.salesManagerName && (
-            <span className="rounded-md bg-amber-50 px-2 py-0.5 font-medium text-amber-800">
-              Продажи: {client.salesManagerName}
-            </span>
-          )}
           {client.waitStatus && (
-            <span className="rounded-md bg-yellow-50 px-2 py-0.5 font-medium text-yellow-800">
+            <span className="rounded-md bg-yellow-50 px-1.5 py-0.5 font-medium text-yellow-800">
               ⏳ {client.waitStatus}
-              {client.waitFollowUpDate ? ` · напишем ${client.waitFollowUpDate}` : ''}
             </span>
           )}
-          {client.visitDate && (
-            <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-0.5 font-medium text-amber-800">
-              <MapPin className="h-3 w-3" />
-              приезд {client.visitDate}
-            </span>
-          )}
-          <span className="rounded-md bg-background px-2 py-0.5">
-            {CLIENT_SOURCES[client.source] || client.source}
-          </span>
           {client.country && (
-            <span className="rounded-md bg-background px-2 py-0.5">
+            <span className="rounded-md bg-background px-1.5 py-0.5">
               {countryName(client.country)}
             </span>
           )}
-          {(client.categories?.length
-            ? client.categories
-            : client.category
-              ? [client.category]
-              : []
-          ).map((cat) => (
-            <span
-              key={cat}
-              className="rounded-md bg-secondary/10 px-2 py-0.5 font-medium text-secondary"
-            >
-              {LEAD_CATEGORIES[cat]}
-            </span>
-          ))}
-          {client.kpiLeadCounted && leadKpiTrackingEnabled() && (
-            <span className="rounded-md bg-emerald-50 px-2 py-0.5 font-medium text-emerald-700">
-              KPI ✓
-            </span>
-          )}
-          {client.lastSamplesSentAt && (
-            <span className="rounded-md bg-sky-50 px-2 py-0.5 font-medium text-sky-800">
-              Образцы {client.lastSamplesSentAt}
-            </span>
-          )}
-          {client.dealAmount != null && client.dealAmount > 0 && (
-            <span className="font-medium text-text">
-              {client.dealAmount.toLocaleString('ru-RU')} сум
+          {categoryLabel && (
+            <span className="rounded-md bg-secondary/10 px-1.5 py-0.5 font-medium text-secondary">
+              {categoryLabel}
             </span>
           )}
         </div>
       </button>
 
       {!isArchived && !won && (
-        <div className="mt-3 flex flex-wrap gap-2">
+        <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
           {stepActive && onCompleteStep && (
             <Button
               type="button"
@@ -174,58 +129,68 @@ export function ClientCard({
               Шаг выполнен
             </Button>
           )}
-          {nextStages.map((stage) => (
+          {nextStage && (
             <Button
-              key={stage.value}
               type="button"
               size="sm"
               variant="secondary"
-              onClick={() => onStageChange(client.id, stage.value, client.stage)}
+              onClick={() => onStageChange(client.id, nextStage.value, client.stage)}
             >
-              → {stage.label}
+              → {nextStage.label}
             </Button>
-          ))}
-          {prevStage && (
+          )}
+          <div className="relative">
             <Button
               type="button"
               size="sm"
               variant="ghost"
-              onClick={() => onStageChange(client.id, prevStage.value, client.stage)}
+              onClick={() => setMoreOpen((v) => !v)}
+              aria-label="Ещё действия"
             >
-              ← {prevStage.label}
+              <MoreHorizontal className="h-4 w-4" />
             </Button>
-          )}
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            onClick={() => onStageChange(client.id, rejectStage, client.stage)}
-          >
-            Отказ
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            onClick={() => onStageChange(client.id, failedStage, client.stage)}
-          >
-            Провалено
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            onClick={() => onStageChange(client.id, abandonedStage, client.stage)}
-          >
-            Заброшено
-          </Button>
+            {moreOpen && (
+              <div className="absolute right-0 z-20 mt-1 min-w-[140px] rounded-lg border border-gray-100 bg-surface p-1 shadow-lg">
+                <button
+                  type="button"
+                  className="block w-full rounded-md px-2 py-1.5 text-left text-xs text-text hover:bg-background"
+                  onClick={() => {
+                    setMoreOpen(false)
+                    onStageChange(client.id, rejectStage, client.stage)
+                  }}
+                >
+                  Отказ
+                </button>
+                <button
+                  type="button"
+                  className="block w-full rounded-md px-2 py-1.5 text-left text-xs text-text hover:bg-background"
+                  onClick={() => {
+                    setMoreOpen(false)
+                    onStageChange(client.id, failedStage, client.stage)
+                  }}
+                >
+                  Провалено
+                </button>
+                <button
+                  type="button"
+                  className="block w-full rounded-md px-2 py-1.5 text-left text-xs text-text hover:bg-background"
+                  onClick={() => {
+                    setMoreOpen(false)
+                    onStageChange(client.id, abandonedStage, client.stage)
+                  }}
+                >
+                  Заброшено
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
       {isArchived && (
-        <div className="mt-3 flex flex-wrap gap-2">
-          <p className="w-full text-[11px] text-muted">В архиве · можно вернуть в воронку</p>
-          {funnel.slice(0, 3).map((stage) => (
+        <div className="mt-2.5 flex flex-wrap gap-1.5">
+          <p className="w-full text-[11px] text-muted">В архиве · вернуть в воронку</p>
+          {funnel.slice(0, 2).map((stage) => (
             <Button
               key={stage.value}
               type="button"

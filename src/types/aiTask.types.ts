@@ -53,3 +53,27 @@ export function clientHasPlannedNextStep(client: {
 }): boolean {
   return Boolean(client.nextStep?.trim())
 }
+
+/**
+ * Skip AI while waiting for the client until the manager's follow-up day
+ * (or a grace period if the date was not set).
+ */
+export function clientShouldSkipAiWhileWaiting(
+  client: {
+    waitStatus?: string | null
+    waitFollowUpDate?: string | null
+    lastTouchDate?: string | null
+  },
+  today: string,
+  graceDays = 5,
+): boolean {
+  if (!client.waitStatus?.trim()) return false
+  if (client.waitFollowUpDate) {
+    return client.waitFollowUpDate > today
+  }
+  if (!client.lastTouchDate) return true
+  const from = new Date(`${client.lastTouchDate}T00:00:00`)
+  const to = new Date(`${today}T00:00:00`)
+  const days = Math.round((to.getTime() - from.getTime()) / 86400000)
+  return days < graceDays
+}

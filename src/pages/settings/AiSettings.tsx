@@ -142,6 +142,7 @@ export function AiSettings() {
         maxTokens: form.maxTokens,
         touchThresholdDays: form.touchThresholdDays,
         movementThresholdDays: form.movementThresholdDays,
+        waitChaseMinDays: form.waitChaseMinDays,
         maxActiveMonths: form.maxActiveMonths,
         promptTemplate: form.promptTemplate,
         isActive: form.isActive,
@@ -329,7 +330,7 @@ export function AiSettings() {
             <p className="mt-1 text-xs text-muted">
               Эти же числа использует статус Новый / Активный / Заморожен.
             </p>
-            <div className="mt-3 grid gap-3 sm:grid-cols-3">
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <Input
                 label="Касание раз в (дней)"
                 type="number"
@@ -345,6 +346,14 @@ export function AiSettings() {
                 onChange={(e) => patchForm({ movementThresholdDays: Number(e.target.value) })}
               />
               <Input
+                label="Ждём ответа — ИИ не раньше (дней)"
+                type="number"
+                min={1}
+                max={30}
+                value={String(form.waitChaseMinDays)}
+                onChange={(e) => patchForm({ waitChaseMinDays: Number(e.target.value) })}
+              />
+              <Input
                 label="Макс. месяцев работы"
                 type="number"
                 min={1}
@@ -353,6 +362,10 @@ export function AiSettings() {
                 onChange={(e) => patchForm({ maxActiveMonths: Number(e.target.value) })}
               />
             </div>
+            <p className="mt-2 text-xs text-muted">
+              Пока стоит «ждём ответа» и дата follow-up менеджера ещё не наступила — ИИ-задачи не
+              создаются. Если даты нет, действует порог «не раньше N дней».
+            </p>
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-background px-3 py-3">

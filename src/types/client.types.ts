@@ -63,6 +63,8 @@ export interface Client {
   salesManagerId: string | null
   salesManagerName: string | null
   waitStatus: string | null
+  /** When manager plans to write the client again while waiting for a reply */
+  waitFollowUpDate: string | null
   nextStep: string | null
   nextStepDeadline: string | null
   /** Planned factory / office visit */

@@ -256,6 +256,17 @@ async function runDailyAiLeadAnalysis(db, apiKey) {
     if (!client.assignedTo) return false
     if (enabledSet.size && !enabledSet.has(client.assignedTo)) return false
     if (String(client.nextStep || '').trim()) return false
+    const waitStatus = String(client.waitStatus || '').trim()
+    if (waitStatus) {
+      const followUp = client.waitFollowUpDate || null
+      const todayStr = tashkentToday()
+      if (followUp && followUp > todayStr) return false
+      if (!followUp) {
+        const daysSinceTouch = daysDiff(client.lastTouchDate, todayStr)
+        const grace = cfg.waitChaseMinDays ?? 5
+        if (daysSinceTouch < grace) return false
+      }
+    }
     return true
   })
 

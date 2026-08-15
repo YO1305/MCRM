@@ -3,8 +3,12 @@ import { where } from 'firebase/firestore'
 import { subscribeToCollection, updateDocument } from '@/firebase/firestore'
 import { useAuth } from '@/hooks/useAuth'
 import { useClients } from '@/hooks/useClients'
+import { useAiConfig } from '@/hooks/useAiConfig'
 import type { AiTask } from '@/types/aiTask.types'
-import { clientHasPlannedNextStep } from '@/types/aiTask.types'
+import {
+  clientHasPlannedNextStep,
+  clientShouldSkipAiWhileWaiting,
+} from '@/types/aiTask.types'
 import { dismissPendingAiTasksForClient } from '@/utils/aiTasks'
 import { addDaysISO, todayISO } from '@/utils/dates'
 
@@ -19,8 +23,11 @@ function sortAiTasks(data: AiTask[]) {
 export function useAiTasks() {
   const { user, isAdmin } = useAuth()
   const { clients } = useClients()
+  const { config } = useAiConfig()
   const [tasks, setTasks] = useState<AiTask[]>([])
   const [loading, setLoading] = useState(true)
+  const today = todayISO()
+  const graceDays = config?.waitChaseMinDays ?? 5
 
   useEffect(() => {
     if (!user) {
@@ -43,32 +50,33 @@ export function useAiTasks() {
     )
   }, [user, isAdmin])
 
-  const clientsWithStep = useMemo(() => {
+  const hiddenClientIds = useMemo(() => {
     const set = new Set<string>()
     for (const c of clients) {
       if (clientHasPlannedNextStep(c)) set.add(c.id)
+      else if (clientShouldSkipAiWhileWaiting(c, today, graceDays)) set.add(c.id)
     }
     return set
-  }, [clients])
+  }, [clients, today, graceDays])
 
-  /** Pending AI tasks, excluding clients that already have a next step. */
+  /** Pending AI tasks, excluding clients with planned next step / waiting grace. */
   const pending = useMemo(
     () =>
       tasks.filter(
-        (t) => t.status === 'pending' && !clientsWithStep.has(t.clientId),
+        (t) => t.status === 'pending' && !hiddenClientIds.has(t.clientId),
       ),
-    [tasks, clientsWithStep],
+    [tasks, hiddenClientIds],
   )
 
   const pendingCount = pending.length
 
-  // Auto-close leftover AI tasks when client already has next step (old generations)
+  // Auto-close leftover AI tasks when client already has next step / waiting grace
   useEffect(() => {
     if (!user || loading || !clients.length) return
     const leftoverIds = [
       ...new Set(
         tasks
-          .filter((t) => t.status === 'pending' && clientsWithStep.has(t.clientId))
+          .filter((t) => t.status === 'pending' && hiddenClientIds.has(t.clientId))
           .map((t) => t.clientId),
       ),
     ]
@@ -82,7 +90,7 @@ export function useAiTasks() {
         }
       }
     })()
-  }, [user, loading, clients.length, tasks, clientsWithStep])
+  }, [user, loading, clients.length, tasks, hiddenClientIds])
 
   const markDone = useCallback(async (taskId: string) => {
     await updateDocument('ai_tasks', taskId, {

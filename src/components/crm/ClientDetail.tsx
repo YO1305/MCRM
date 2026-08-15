@@ -33,7 +33,7 @@ import {
 } from '@/constants/leadProducts'
 import { CountrySelect } from '@/components/crm/CountrySelect'
 import { WAIT_STATUS_PRESETS } from '@/constants/waitStatus'
-import { formatISODateShort, todayISO } from '@/utils/dates'
+import { formatISODateShort, todayISO, addDaysISO } from '@/utils/dates'
 import { clientStepOverdue, visitPrepareDate } from '@/utils/clientWork'
 import { ActivityBadge } from '@/components/crm/ActivityBadge'
 import { calculateActiveMonths, resolveOpenedDateFromClient } from '@/utils/dateUtils'
@@ -82,7 +82,11 @@ interface ClientDetailProps {
       salesManagerName: string
     },
   ) => Promise<void>
-  onSetWaitStatus: (clientId: string, status: string | null) => Promise<void>
+  onSetWaitStatus: (
+    clientId: string,
+    status: string | null,
+    followUpDate?: string | null,
+  ) => Promise<void>
   onSetNextStep: (
     clientId: string,
     nextStep: string,
@@ -179,6 +183,7 @@ export function ClientDetail({
   const [deptId, setDeptId] = useState('')
   const [salesMemberId, setSalesMemberId] = useState('')
   const [customWait, setCustomWait] = useState('')
+  const [waitFollowUpDate, setWaitFollowUpDate] = useState(addDaysISO(todayISO(), 5))
   const [nextStepText, setNextStepText] = useState('')
   const [nextStepDeadline, setNextStepDeadline] = useState('')
   const [visitDate, setVisitDate] = useState('')
@@ -217,6 +222,7 @@ export function ClientDetail({
     setOpenedDate(resolveOpenedDateFromClient(client))
     setNextStepText(client.nextStep || '')
     setNextStepDeadline(client.nextStepDeadline || '')
+    setWaitFollowUpDate(client.waitFollowUpDate || addDaysISO(todayISO(), 5))
     setVisitDate(client.visitDate || '')
     setVisitNote(client.visitNote || '')
     setHistoryText('')
@@ -414,9 +420,28 @@ export function ClientDetail({
 
   async function handleWait(status: string) {
     if (!canWaitNext) return
+    const date = waitFollowUpDate.trim()
+    if (!date) {
+      alert('Укажите дату, когда сами напишете клиенту')
+      return
+    }
     setSending(true)
     try {
-      await onSetWaitStatus(client!.id, status)
+      await onSetWaitStatus(client!.id, status, date)
+    } catch (err) {
+      console.error(err)
+      alert(err instanceof Error ? err.message : 'Не удалось сохранить статус')
+    } finally {
+      setSending(false)
+    }
+  }
+
+  async function handleClearWait() {
+    if (!canWaitNext) return
+    setSending(true)
+    try {
+      await onSetWaitStatus(client!.id, null, null)
+      setWaitFollowUpDate(addDaysISO(todayISO(), 5))
     } finally {
       setSending(false)
     }
@@ -860,6 +885,19 @@ export function ClientDetail({
           {/* Wait status */}
           <section className="space-y-2 rounded-xl border border-gray-100 p-3">
             <p className="text-sm font-semibold text-text">Что ждём</p>
+            <p className="text-xs text-muted">
+              Пока ждём ответа клиента — ИИ не будет советовать писать сразу. Укажите, когда
+              сами выйдете с сообщением («как там / когда ответ»).
+            </p>
+            {canWaitNext && (
+              <Input
+                label="Когда сами напишете клиенту"
+                type="date"
+                value={waitFollowUpDate}
+                onChange={(e) => setWaitFollowUpDate(e.target.value)}
+                min={todayISO()}
+              />
+            )}
             <div className="flex flex-wrap gap-2">
               {WAIT_STATUS_PRESETS.map((preset) => {
                 const active = client.waitStatus === preset
@@ -904,8 +942,30 @@ export function ClientDetail({
                 </Button>
               </div>
             )}
-            {!client.waitStatus && (
-              <p className="text-xs text-muted">Выберите или введите что ждём...</p>
+            {client.waitStatus ? (
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs text-muted">
+                  Сейчас: {client.waitStatus}
+                  {client.waitFollowUpDate
+                    ? ` · сами напишем ${formatISODateShort(client.waitFollowUpDate)}`
+                    : ''}
+                </p>
+                {canWaitNext && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    disabled={sending}
+                    onClick={() => void handleClearWait()}
+                  >
+                    Снять ожидание
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <p className="text-xs text-muted">
+                Сначала дату follow-up, потом статус (например «Ждём ответа»)…
+              </p>
             )}
           </section>
 

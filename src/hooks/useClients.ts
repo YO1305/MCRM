@@ -53,6 +53,7 @@ const emptySales = {
   salesManagerId: null as string | null,
   salesManagerName: null as string | null,
   waitStatus: null as string | null,
+  waitFollowUpDate: null as string | null,
   nextStep: null as string | null,
   nextStepDeadline: null as string | null,
   visitDate: null as string | null,
@@ -518,24 +519,47 @@ export function useClients() {
     })
   }
 
-  async function setWaitStatus(clientId: string, status: string | null) {
+  async function setWaitStatus(
+    clientId: string,
+    status: string | null,
+    followUpDate: string | null = null,
+  ) {
     if (!user) throw new Error('Not authenticated')
     const client = clients.find((c) => c.id === clientId)
+    const date = followUpDate?.trim() || null
+    if (status && !date) {
+      throw new Error('Укажите дату, когда сами напишете клиенту')
+    }
+
+    const patch: Record<string, unknown> = {
+      waitStatus: status,
+      waitFollowUpDate: status ? date : null,
+    }
+
+    // While waiting — plan the manager's own follow-up as next step if none yet
+    if (status && date && !client?.nextStep?.trim()) {
+      patch.nextStep = `Написать клиенту по статусу «${status}» — уточнить, когда будет ответ`
+      patch.nextStepDeadline = date
+    }
+
     await updateDocument(
       'clients',
       clientId,
-      activityPatch(client, { waitStatus: status }, { movement: !!status, touch: !!status }),
+      activityPatch(client, patch, { movement: !!status, touch: !!status }),
     )
     if (status) {
       await createDocument('client_history', {
         clientId,
         type: 'wait_status',
-        text: `Статус: ${status}`,
+        text: `Статус: ${status}. Сами напишем: ${date}`,
         fromStage: null,
         toStage: null,
         authorId: user.id,
         authorName: user.name,
       })
+      void dismissPendingAiTasksForClient(clientId).catch((err) =>
+        console.error('dismiss ai tasks failed', err),
+      )
     }
   }
 

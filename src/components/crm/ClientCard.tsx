@@ -113,6 +113,7 @@ export function ClientCard({
           {client.waitStatus && (
             <span className="rounded-md bg-yellow-50 px-2 py-0.5 font-medium text-yellow-800">
               ⏳ {client.waitStatus}
+              {client.waitFollowUpDate ? ` · напишем ${client.waitFollowUpDate}` : ''}
             </span>
           )}
           {client.visitDate && (

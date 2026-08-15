@@ -124,8 +124,9 @@ function buildPromptFromTemplate(template, lead, maxActiveMonths) {
 - Пиши нейтрально от системы, НЕ от имени менеджера и НЕ от имени «Отабек» / любого автора из истории. Не используй «я», «мне», «от меня».
 - Заметки менеджера о запросе клиента (документы, КП, образцы, вопросы) = работа ЕЩЁ впереди. Не пиши, будто уже всё отправлено или клиенту уже ответили.
 - ЗАПРЕЩЕНО генерировать готовое сообщение/письмо клиенту в кавычках или «напиши ему: …». Только действие: что сделать по клиенту (подготовить, отправить, уточнить у ассистента, напомнить о сроке).
-- Если клиент «на паузе» / в статусе ожидания — учти, чего ждём; дай совет или напоминание о действии, не ломай паузу без причины.
+- Если клиент «на паузе» / в статусе ожидания — НЕ советуй писать «мы ждём ответа». Только напоминание менеджеру о своём follow-up, если срок уже подошёл.
 - Не дублируй уже запланированный менеджером следующий шаг.
+- Не генерируй задачи в первые дни ожидания ответа клиента.
 - Сначала проанализируй этап, ожидание, историю и сроки, потом одну короткую задачу или совет-действие.`
 
   return `${filled}${hardRules}`
@@ -133,6 +134,15 @@ function buildPromptFromTemplate(template, lead, maxActiveMonths) {
 
 function hasPlannedNextStep(client) {
   return Boolean(String(client.nextStep || '').trim())
+}
+
+function shouldSkipWhileWaiting(client, todayStr, graceDays = 5) {
+  if (!String(client.waitStatus || '').trim()) return false
+  const followUp = client.waitFollowUpDate || null
+  if (followUp && followUp > todayStr) return true
+  if (followUp && followUp <= todayStr) return false
+  const daysSinceTouch = daysDiff(client.lastTouchDate, todayStr)
+  return daysSinceTouch < graceDays
 }
 
 const DEFAULT_PROMPT = `Ты помощник менеджера по продажам в текстильной компании BAHMAL HOME (Узбекистан).
@@ -168,6 +178,7 @@ async function loadAiConfig(db) {
     temperature: data.temperature ?? 0.4,
     maxTokens: data.maxTokens ?? 150,
     maxActiveMonths: data.maxActiveMonths ?? 3,
+    waitChaseMinDays: data.waitChaseMinDays ?? 5,
     promptTemplate: data.promptTemplate || DEFAULT_PROMPT,
     isActive: data.isActive !== false,
     enabledForManagers: Array.isArray(data.enabledForManagers) ? data.enabledForManagers : [],
@@ -331,6 +342,8 @@ async function runAnalysis() {
     if (enabledSet.size && !enabledSet.has(client.assignedTo)) continue
     // Manager already planned next step — do not invent another AI task
     if (hasPlannedNextStep(client)) continue
+    // Waiting for client reply — do not nag until follow-up day / grace period
+    if (shouldSkipWhileWaiting(client, todayStr, config.waitChaseMinDays)) continue
     const daysSinceTouch = daysDiff(client.lastTouchDate, todayStr)
     if (daysSinceTouch === 0) continue
     candidates.push({ client, daysSinceTouch })

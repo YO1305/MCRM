@@ -19,6 +19,7 @@ import type { LeadCategory } from '@/types/kpiLead.types'
 import { getCurrentMonth, todayISO } from '@/utils/dates'
 import { clientActionDeadline } from '@/utils/clientWork'
 import { activityPatch } from '@/utils/leadActivity'
+import { dismissPendingAiTasksForClient } from '@/utils/aiTasks'
 import {
   primaryKpiCategory,
   resolveKpiCategories,
@@ -569,6 +570,10 @@ export function useClients() {
         authorId: user.id,
         authorName: user.name,
       })
+      // Manager planned work — remove leftover AI suggestions for this lead
+      void dismissPendingAiTasksForClient(clientId).catch((err) =>
+        console.error('dismiss ai tasks failed', err),
+      )
     }
   }
 

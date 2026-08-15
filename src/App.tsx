@@ -20,6 +20,7 @@ import { Analytics } from '@/pages/Analytics'
 import { Reports } from '@/pages/Reports'
 import { Requests } from '@/pages/Requests'
 import { Settings } from '@/pages/Settings'
+import { AiSettings } from '@/pages/settings/AiSettings'
 
 export default function App() {
   return (
@@ -94,6 +95,7 @@ export default function App() {
 
               <Route element={<SectionRoute section="settings" />}>
                 <Route path="/settings" element={<Settings />} />
+                <Route path="/settings/ai" element={<AiSettings />} />
               </Route>
             </Route>
           </Route>

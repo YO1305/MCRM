@@ -8,6 +8,9 @@
   "functions": {
     "api/ai-lead-analysis.js": {
       "maxDuration": 60
+    },
+    "api/ai-test-prompt.js": {
+      "maxDuration": 30
     }
   },
   "crons": [

@@ -110,13 +110,39 @@ ${historyText}
 Задача для менеджера на сегодня:`
 }
 
-async function analyzeLeadWithGroq(groq, lead) {
+function buildPromptFromTemplate(template, lead, maxActiveMonths) {
+  const historyText =
+    lead.recentHistory.length > 0
+      ? lead.recentHistory
+          .map((h) => `- ${h.date} [${h.type}] ${h.authorName}: ${h.text}`)
+          .join('\n')
+      : '- История пуста'
+
+  return String(template || buildPrompt(lead))
+    .split('{clientName}').join(lead.clientName)
+    .split('{company}').join(lead.company || 'не указана')
+    .split('{category}').join(lead.category || 'не указана')
+    .split('{stage}').join(lead.stage)
+    .split('{waitStatus}').join(lead.waitStatus || 'не указан')
+    .split('{nextStep}').join(lead.nextStep || 'не указан')
+    .split('{nextStepDeadline}').join(lead.nextStepDeadline || 'не указан')
+    .split('{daysSinceTouch}').join(String(lead.daysSinceTouch))
+    .split('{daysSinceMovement}').join(String(lead.daysSinceMovement))
+    .split('{activeMonthsCount}').join(String(lead.activeMonthsCount))
+    .split('{maxActiveMonths}').join(String(maxActiveMonths ?? 3))
+    .split('{recentHistory}').join(historyText)
+}
+
+async function analyzeLeadWithGroq(groq, lead, config = {}) {
   try {
+    const content = config.promptTemplate
+      ? buildPromptFromTemplate(config.promptTemplate, lead, config.maxActiveMonths)
+      : buildPrompt(lead)
     const completion = await groq.chat.completions.create({
-      model: GROQ_MODEL,
-      messages: [{ role: 'user', content: buildPrompt(lead) }],
-      max_tokens: 150,
-      temperature: 0.4,
+      model: config.model || GROQ_MODEL,
+      messages: [{ role: 'user', content }],
+      max_tokens: config.maxTokens || 150,
+      temperature: config.temperature ?? 0.4,
     })
     const taskText = completion.choices[0]?.message?.content?.trim()
     if (!taskText) throw new Error('Empty response from Groq')
@@ -186,12 +212,24 @@ async function runDailyAiLeadAnalysis(db, apiKey) {
   const todayStr = tashkentToday()
   console.log('Starting daily AI lead analysis...', todayStr)
 
+  const configSnap = await db.doc('ai_config/groq_settings').get()
+  const cfg = configSnap.exists ? configSnap.data() : {}
+  if (cfg.isActive === false) {
+    console.log('AI analysis disabled in config, skipping')
+    return
+  }
+  const enabledSet = new Set(Array.isArray(cfg.enabledForManagers) ? cfg.enabledForManagers : [])
+  const model = cfg.model || GROQ_MODEL
+  const temperature = cfg.temperature ?? 0.4
+  const maxTokens = cfg.maxTokens ?? 150
+
   const clientsSnap = await db.collection('clients').get()
   const activeDocs = clientsSnap.docs.filter((docSnap) => {
     const client = docSnap.data() || {}
     if (isLeadFinal(client.stage)) return false
     if (client.activityStatus === 'frozen') return false
     if (!client.assignedTo) return false
+    if (enabledSet.size && !enabledSet.has(client.assignedTo)) return false
     return true
   })
 
@@ -216,7 +254,13 @@ async function runDailyAiLeadAnalysis(db, apiKey) {
           continue
         }
 
-        const taskText = await analyzeLeadWithGroq(groq, snapshot)
+        const taskText = await analyzeLeadWithGroq(groq, snapshot, {
+          model,
+          temperature,
+          maxTokens,
+          promptTemplate: cfg.promptTemplate,
+          maxActiveMonths: cfg.maxActiveMonths ?? 3,
+        })
         const taskType = detectTaskType(taskText, snapshot)
         await saveAiTask(db, snapshot, taskText, taskType, todayStr)
         await sleep(REQUEST_DELAY_MS)

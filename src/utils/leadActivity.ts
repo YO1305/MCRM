@@ -18,18 +18,29 @@ export function canSeeLeadActivity(user?: { role?: string; position?: string } |
   return user.role === 'admin' || user.position === 'head'
 }
 
+export type ActivityThresholds = {
+  touchThresholdDays?: number
+  movementThresholdDays?: number
+  maxActiveMonths?: number
+}
+
 export function calculateActivityStatus(
   client: Client,
   today: Date = new Date(),
+  thresholds?: ActivityThresholds,
 ): ActivityStatus {
   if (isLeadFinal(client.stage)) {
     return client.activityStatus || 'active'
   }
 
+  const touchLimit = thresholds?.touchThresholdDays ?? 14
+  const movementLimit = thresholds?.movementThresholdDays ?? 45
+  const maxMonths = thresholds?.maxActiveMonths ?? 3
+
   const openedMonth = resolveOpenedMonth(client)
   const activeMonths = calculateActiveMonths(openedMonth)
 
-  if (activeMonths >= 4) return 'frozen'
+  if (activeMonths >= maxMonths + 1) return 'frozen'
   if (activeMonths === 1) return 'new'
 
   const todayISOStr = todayISO()
@@ -38,9 +49,9 @@ export function calculateActivityStatus(
   const daysSinceMovement = daysDiff(client.lastStageChangeDate, today)
 
   const failedCount = [
-    daysSinceTouch > 14,
+    daysSinceTouch > touchLimit,
     nextStepOverdue,
-    daysSinceMovement > 45,
+    daysSinceMovement > movementLimit,
   ].filter(Boolean).length
 
   if (failedCount === 0) return 'active'
@@ -48,11 +59,17 @@ export function calculateActivityStatus(
   return 'frozen'
 }
 
-export function resolveActivityStatus(client: Client): ActivityStatus {
-  return calculateActivityStatus(client)
+export function resolveActivityStatus(
+  client: Client,
+  thresholds?: ActivityThresholds,
+): ActivityStatus {
+  return calculateActivityStatus(client, new Date(), thresholds)
 }
 
-export function buildActivityFields(client: Client): {
+export function buildActivityFields(
+  client: Client,
+  thresholds?: ActivityThresholds,
+): {
   openedDate: string
   openedMonth: string
   activityStatus: ActivityStatus
@@ -72,7 +89,7 @@ export function buildActivityFields(client: Client): {
   return {
     openedDate,
     openedMonth,
-    activityStatus: calculateActivityStatus(merged),
+    activityStatus: calculateActivityStatus(merged, new Date(), thresholds),
     activeMonthsCount: calculateActiveMonths(openedMonth),
   }
 }
@@ -80,7 +97,7 @@ export function buildActivityFields(client: Client): {
 export function activityPatch(
   client: Client | undefined,
   extra: Record<string, unknown>,
-  opts?: { movement?: boolean; touch?: boolean },
+  opts?: { movement?: boolean; touch?: boolean; thresholds?: ActivityThresholds },
 ): Record<string, unknown> {
   const today = todayISO()
   let openedDate =
@@ -120,16 +137,16 @@ export function activityPatch(
     openedMonth,
     ...(opts?.touch || opts?.movement ? { lastTouchDate: today } : {}),
     ...(opts?.movement ? { lastStageChangeDate: today } : {}),
-    activityStatus: calculateActivityStatus(merged),
+    activityStatus: calculateActivityStatus(merged, new Date(), opts?.thresholds),
     activeMonthsCount: calculateActiveMonths(openedMonth),
   }
 }
 
-export function countLeadActivity(clients: Client[]) {
+export function countLeadActivity(clients: Client[], thresholds?: ActivityThresholds) {
   const counts = { new: 0, active: 0, critical: 0, frozen: 0 }
   for (const client of clients) {
     if (isLeadFinal(client.stage)) continue
-    counts[resolveActivityStatus(client)] += 1
+    counts[resolveActivityStatus(client, thresholds)] += 1
   }
   return counts
 }

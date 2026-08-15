@@ -10,6 +10,7 @@ import { POSITION_LABELS } from '@/constants/positions'
 import { subscribeToCollection } from '@/firebase/firestore'
 import { runAiLeadAnalysisNow } from '@/firebase/callable'
 import type { Task } from '@/types/task.types'
+import { useAiConfig } from '@/hooks/useAiConfig'
 import { canSeeLeadActivity, countLeadActivity } from '@/utils/leadActivity'
 import { syncOpenedMonthsFromHistory } from '@/utils/syncOpenedMonths'
 import { todayISO, toISODate } from '@/utils/dates'
@@ -19,7 +20,16 @@ export function Dashboard() {
   const { clients } = useClients()
   const { tasks: aiTasks } = useAiTasks()
   const showActivity = isAdmin || canSeeLeadActivity(user)
-  const activityCounts = useMemo(() => countLeadActivity(clients), [clients])
+  const { config: aiConfig } = useAiConfig()
+  const activityCounts = useMemo(
+    () =>
+      countLeadActivity(clients, {
+        touchThresholdDays: aiConfig?.touchThresholdDays,
+        movementThresholdDays: aiConfig?.movementThresholdDays,
+        maxActiveMonths: aiConfig?.maxActiveMonths,
+      }),
+    [clients, aiConfig],
+  )
   const [tasks, setTasks] = useState<Task[]>([])
   const [aiRunning, setAiRunning] = useState(false)
   const [syncingMonths, setSyncingMonths] = useState(false)

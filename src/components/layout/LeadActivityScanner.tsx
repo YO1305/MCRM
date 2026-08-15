@@ -4,6 +4,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useClients } from '@/hooks/useClients'
 import { useNotifications } from '@/hooks/useNotifications'
 import { useUsers } from '@/hooks/useUsers'
+import { useAiConfig } from '@/hooks/useAiConfig'
 import {
   activityFieldsChanged,
   leadActivityNotices,
@@ -19,14 +20,15 @@ export function LeadActivityScanner() {
   const { user, viewAsUser } = useAuth()
   const { clients, loading } = useClients()
   const { users, loading: usersLoading } = useUsers(!!user)
+  const { config } = useAiConfig()
   const { notify } = useNotifications()
   const scanned = useRef('')
 
   useEffect(() => {
     if (!user || viewAsUser || loading || usersLoading) return
     const today = todayISO()
-    const storageKey = `leadActivityScan:v3:${user.id}:${today}`
-    const runKey = `${today}:${clients.length}`
+    const storageKey = `leadActivityScan:v4:${user.id}:${today}`
+    const runKey = `${today}:${clients.length}:${config?.touchThresholdDays}:${config?.movementThresholdDays}:${config?.maxActiveMonths}`
     if (scanned.current === runKey) return
     if (typeof localStorage !== 'undefined' && localStorage.getItem(storageKey) === '1') {
       scanned.current = runKey
@@ -38,10 +40,16 @@ export function LeadActivityScanner() {
       .filter((u) => u.isActive !== false && (u.role === 'admin' || u.position === 'head'))
       .map((u) => u.id)
 
+    const thresholds = {
+      touchThresholdDays: config?.touchThresholdDays,
+      movementThresholdDays: config?.movementThresholdDays,
+      maxActiveMonths: config?.maxActiveMonths,
+    }
+
     void (async () => {
       for (const client of clients) {
         if (isLeadFinal(client.stage)) continue
-        const fields = buildActivityFields(client)
+        const fields = buildActivityFields(client, thresholds)
         if (activityFieldsChanged(client, fields)) {
           try {
             await updateDocument('clients', client.id, fields)
@@ -64,7 +72,7 @@ export function LeadActivityScanner() {
         /* ignore quota / private mode */
       }
     })()
-  }, [user, viewAsUser, loading, usersLoading, clients, users, notify])
+  }, [user, viewAsUser, loading, usersLoading, clients, users, notify, config])
 
   return null
 }

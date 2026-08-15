@@ -18,6 +18,7 @@ import { todayISO } from '@/utils/dates'
 import { clientActionDeadline } from '@/utils/clientWork'
 import type { ActivityStatus, Client } from '@/types/client.types'
 import { canSeeLeadActivity, resolveActivityStatus } from '@/utils/leadActivity'
+import { useAiConfig } from '@/hooks/useAiConfig'
 
 type ViewMode = 'list' | 'kanban'
 type ScopeFilter = 'active' | 'today' | 'overdue' | 'deal' | 'archive' | 'all'
@@ -61,6 +62,12 @@ export function CRM() {
 
   const today = todayISO()
   const showActivity = isAdmin || canSeeLeadActivity(user)
+  const { config: aiConfig } = useAiConfig()
+  const activityThresholds = {
+    touchThresholdDays: aiConfig?.touchThresholdDays,
+    movementThresholdDays: aiConfig?.movementThresholdDays,
+    maxActiveMonths: aiConfig?.maxActiveMonths,
+  }
   const selected = useMemo(
     () => (selectedId ? clients.find((c) => c.id === selectedId) || null : null),
     [clients, selectedId],
@@ -133,7 +140,11 @@ export function CRM() {
       }
       if (stageFilter !== 'all' && c.stage !== stageFilter) return false
       if (waitFilter !== 'all' && c.waitStatus !== waitFilter) return false
-      if (showActivity && activityFilter !== 'all' && resolveActivityStatus(c) !== activityFilter) {
+      if (
+        showActivity &&
+        activityFilter !== 'all' &&
+        resolveActivityStatus(c, activityThresholds) !== activityFilter
+      ) {
         return false
       }
 
@@ -154,7 +165,7 @@ export function CRM() {
           return true
       }
     })
-  }, [scoped, search, stageFilter, waitFilter, activityFilter, showActivity, scope, today])
+  }, [scoped, search, stageFilter, waitFilter, activityFilter, showActivity, activityThresholds, scope, today])
 
   async function handleStageChange(
     clientId: string,

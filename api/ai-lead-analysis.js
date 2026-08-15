@@ -96,7 +96,7 @@ function collectLeadSnapshot(client, history, todayStr) {
   }
 }
 
-function buildPrompt(lead) {
+function buildPromptFromTemplate(template, lead, maxActiveMonths) {
   const historyText =
     lead.recentHistory.length > 0
       ? lead.recentHistory
@@ -104,44 +104,72 @@ function buildPrompt(lead) {
           .join('\n')
       : '- История пуста'
 
-  return `Ты помощник менеджера по продажам в текстильной компании BAHMAL HOME (Узбекистан).
+  return String(template || '')
+    .split('{clientName}').join(lead.clientName)
+    .split('{company}').join(lead.company || 'не указана')
+    .split('{category}').join(lead.category || 'не указана')
+    .split('{stage}').join(lead.stage)
+    .split('{waitStatus}').join(lead.waitStatus || 'не указан')
+    .split('{nextStep}').join(lead.nextStep || 'не указан')
+    .split('{nextStepDeadline}').join(lead.nextStepDeadline || 'не указан')
+    .split('{daysSinceTouch}').join(String(lead.daysSinceTouch))
+    .split('{daysSinceMovement}').join(String(lead.daysSinceMovement))
+    .split('{activeMonthsCount}').join(String(lead.activeMonthsCount))
+    .split('{maxActiveMonths}').join(String(maxActiveMonths ?? 3))
+    .split('{recentHistory}').join(historyText)
+}
+
+const DEFAULT_PROMPT = `Ты помощник менеджера по продажам в текстильной компании BAHMAL HOME (Узбекистан).
 Проанализируй данные по клиенту и дай ОДНУ конкретную задачу на сегодня менеджеру.
 
 ДАННЫЕ КЛИЕНТА:
-- Имя: ${lead.clientName} (${lead.company})
-- Категория: ${lead.category}
-- Этап воронки: ${lead.stage}
-- Статус ожидания: ${lead.waitStatus || 'не указан'}
-- Следующий шаг: ${lead.nextStep || 'не указан'}
-- Срок следующего шага: ${lead.nextStepDeadline || 'не указан'}
-- Дней без контакта: ${lead.daysSinceTouch}
-- Дней без движения по воронке: ${lead.daysSinceStageChange}
-- Месяц работы с лидом: ${lead.activeMonthsCount} из 3
+- Имя: {clientName} ({company})
+- Категория: {category}
+- Этап воронки: {stage}
+- Статус ожидания: {waitStatus}
+- Следующий шаг: {nextStep}
+- Срок следующего шага: {nextStepDeadline}
+- Дней без контакта: {daysSinceTouch}
+- Дней без движения по воронке: {daysSinceMovement}
+- Месяц работы с лидом: {activeMonthsCount} из {maxActiveMonths}
 
 ПОСЛЕДНИЕ ДЕЙСТВИЯ:
-${historyText}
+{recentHistory}
 
 ПРАВИЛА:
 1. Дай ОДНУ задачу — максимум 2 предложения
-2. Задача должна быть конкретной — что именно написать или спросить
-3. Не используй общие фразы типа "свяжись с клиентом"
-4. Учитывай контекст — что ждём, что было отправлено, сколько времени прошло
-5. Если образцы отправлены — спроси про результат или трек-номер
-6. Если КП отправлено давно — напомни и спроси о решении
-7. Если клиент молчит — предложи конкретный текст сообщения
-8. Отвечай только на русском языке
-9. Начинай ответ сразу с задачи, без вступлений
+2. Задача должна быть конкретной
+3. Отвечай только на русском языке
+4. Начинай ответ сразу с задачи
 
 Задача для менеджера на сегодня:`
+
+async function loadAiConfig(db) {
+  const snap = await db.doc('ai_config/groq_settings').get()
+  const data = snap.exists ? snap.data() : {}
+  return {
+    model: data.model || GROQ_MODEL,
+    temperature: data.temperature ?? 0.4,
+    maxTokens: data.maxTokens ?? 150,
+    maxActiveMonths: data.maxActiveMonths ?? 3,
+    promptTemplate: data.promptTemplate || DEFAULT_PROMPT,
+    isActive: data.isActive !== false,
+    enabledForManagers: Array.isArray(data.enabledForManagers) ? data.enabledForManagers : [],
+  }
 }
 
-async function analyzeLeadWithGroq(groq, lead) {
+async function analyzeLeadWithGroq(groq, lead, config) {
   try {
+    const prompt = buildPromptFromTemplate(
+      config.promptTemplate,
+      lead,
+      config.maxActiveMonths,
+    )
     const completion = await groq.chat.completions.create({
-      model: GROQ_MODEL,
-      messages: [{ role: 'user', content: buildPrompt(lead) }],
-      max_tokens: 150,
-      temperature: 0.4,
+      model: config.model || GROQ_MODEL,
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: config.maxTokens || 150,
+      temperature: config.temperature ?? 0.4,
     })
     const taskText = completion.choices[0]?.message?.content?.trim()
     if (!taskText) throw new Error('Empty response from Groq')
@@ -245,7 +273,24 @@ async function runAnalysis() {
   const groq = new Groq({ apiKey })
   const db = admin.firestore()
   const todayStr = tashkentToday()
+  const config = await loadAiConfig(db)
 
+  if (!config.isActive) {
+    return {
+      ok: true,
+      skippedAll: true,
+      reason: 'AI disabled in ai_config/groq_settings',
+      today: todayStr,
+      candidates: 0,
+      processed: 0,
+      remaining: 0,
+      created: 0,
+      skipped: 0,
+      errors: 0,
+    }
+  }
+
+  const enabledSet = new Set(config.enabledForManagers || [])
   const clientsSnap = await db.collection('clients').get()
   const candidates = []
 
@@ -254,6 +299,7 @@ async function runAnalysis() {
     if (FINAL_STAGES.has(client.stage)) continue
     if (client.activityStatus === 'frozen') continue
     if (!client.assignedTo) continue
+    if (enabledSet.size && !enabledSet.has(client.assignedTo)) continue
     const daysSinceTouch = daysDiff(client.lastTouchDate, todayStr)
     if (daysSinceTouch === 0) continue
     candidates.push({ client, daysSinceTouch })
@@ -276,7 +322,7 @@ async function runAnalysis() {
         .get()
       const history = historySnap.docs.map((d) => d.data())
       const snapshot = collectLeadSnapshot(client, history, todayStr)
-      const taskText = await analyzeLeadWithGroq(groq, snapshot)
+      const taskText = await analyzeLeadWithGroq(groq, snapshot, config)
       const taskType = detectTaskType(taskText, snapshot)
       const ok = await saveAiTask(db, snapshot, taskText, taskType, todayStr)
       if (ok) created += 1

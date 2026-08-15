@@ -72,14 +72,7 @@ export function detectAiTaskKind(
   lead: Pick<LeadPromptSnapshot, 'waitStatus'>,
 ): AiTaskKind {
   const text = String(taskText || '').toLowerCase()
-  if (
-    text.includes('напиши клиенту') ||
-    text.includes('текст сообщения') ||
-    text.includes('черновик') ||
-    text.includes('ответ клиенту')
-  ) {
-    return 'draft_reply'
-  }
+  // Intentionally no draft_reply — we ask Groq for actions only, not client message text
   if (lead.waitStatus || taskType === 'wait_advice' || text.includes('совет')) {
     return 'tip'
   }

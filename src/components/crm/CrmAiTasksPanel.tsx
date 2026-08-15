@@ -12,7 +12,6 @@ const FILTERS: { key: KindFilter; label: string }[] = [
   { key: 'all', label: 'Все' },
   { key: 'reminder', label: AI_TASK_KIND_LABELS.reminder },
   { key: 'tip', label: AI_TASK_KIND_LABELS.tip },
-  { key: 'draft_reply', label: AI_TASK_KIND_LABELS.draft_reply },
   { key: 'action', label: AI_TASK_KIND_LABELS.action },
 ]
 
@@ -39,7 +38,7 @@ export function CrmAiTasksPanel() {
             Задачи по лидам · ИИ
           </h2>
           <p className="mt-0.5 text-xs text-muted">
-            Напоминания, советы и действия по клиентам без запланированного следующего шага
+            Что сделать по клиенту: напоминания, советы и действия (без готовых писем клиенту)
           </p>
         </div>
         <Link to="/tasks" className="text-xs font-medium text-secondary hover:underline">

@@ -46,11 +46,65 @@ function tashkentToday() {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Tashkent' })
 }
 
+function isIsoDay(value) {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
+}
+
 function daysDiff(fromDate, todayStr) {
-  if (!fromDate) return 999
+  if (!isIsoDay(fromDate) || !isIsoDay(todayStr)) return 0
   const from = new Date(`${fromDate}T00:00:00`)
   const to = new Date(`${todayStr}T00:00:00`)
-  return Math.round((to.getTime() - from.getTime()) / 86400000)
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return 0
+  return Math.max(0, Math.round((to.getTime() - from.getTime()) / 86400000))
+}
+
+function dateFromCreatedAt(createdAt, fallback) {
+  if (!createdAt) return fallback
+  if (typeof createdAt === 'string' && createdAt.length >= 10) return createdAt.slice(0, 10)
+  if (typeof createdAt.toDate === 'function') {
+    try {
+      return createdAt.toDate().toLocaleDateString('en-CA', { timeZone: 'Asia/Tashkent' })
+    } catch {
+      /* fall through */
+    }
+  }
+  const seconds = createdAt.seconds || createdAt._seconds
+  if (typeof seconds === 'number') {
+    return new Date(seconds * 1000).toLocaleDateString('en-CA', { timeZone: 'Asia/Tashkent' })
+  }
+  return fallback
+}
+
+function resolveOpenedDate(client, todayStr) {
+  if (isIsoDay(client.openedDate)) return client.openedDate
+  if (typeof client.openedMonth === 'string' && /^\d{4}-\d{2}$/.test(client.openedMonth)) {
+    return `${client.openedMonth}-01`
+  }
+  return dateFromCreatedAt(client.createdAt, todayStr)
+}
+
+function resolveTouchDate(client, todayStr, history) {
+  if (isIsoDay(client.lastTouchDate)) return client.lastTouchDate
+  if (Array.isArray(history) && history.length) {
+    const fromHistory = formatHistoryDate(history[0].createdAt)
+    if (isIsoDay(fromHistory)) return fromHistory
+  }
+  return resolveOpenedDate(client, todayStr)
+}
+
+function resolveMovementDate(client, todayStr) {
+  if (isIsoDay(client.lastStageChangeDate)) return client.lastStageChangeDate
+  return resolveOpenedDate(client, todayStr)
+}
+
+function daysAgoPhrase(days) {
+  if (days === 0) return 'сегодня'
+  const mod10 = days % 10
+  const mod100 = days % 100
+  let word = 'дней'
+  if (mod10 === 1 && mod100 !== 11) word = 'день'
+  else if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) word = 'дня'
+  return `${days} ${word} назад`
 }
 
 function formatHistoryDate(createdAt) {
@@ -72,6 +126,8 @@ function formatHistoryDate(createdAt) {
 }
 
 function collectLeadSnapshot(client, history, todayStr) {
+  const daysTouch = daysDiff(resolveTouchDate(client, todayStr, history), todayStr)
+  const daysMove = daysDiff(resolveMovementDate(client, todayStr), todayStr)
   return {
     clientId: client.id,
     clientName: client.name || '',
@@ -81,9 +137,10 @@ function collectLeadSnapshot(client, history, todayStr) {
     waitStatus: client.waitStatus || null,
     nextStep: client.nextStep || null,
     nextStepDeadline: client.nextStepDeadline || null,
-    lastTouchDate: client.lastTouchDate || null,
-    daysSinceTouch: daysDiff(client.lastTouchDate, todayStr),
-    daysSinceStageChange: daysDiff(client.lastStageChangeDate, todayStr),
+    lastTouchDate: resolveTouchDate(client, todayStr, history),
+    daysSinceTouch: daysTouch,
+    daysSinceMovement: daysMove,
+    daysSinceStageChange: daysMove,
     activeMonthsCount: client.activeMonthsCount || 1,
     assignedTo: client.assignedTo,
     assignedToName: client.assignedToName || '',
@@ -141,7 +198,7 @@ function shouldSkipWhileWaiting(client, todayStr, graceDays = 5) {
   const followUp = client.waitFollowUpDate || null
   if (followUp && followUp > todayStr) return true
   if (followUp && followUp <= todayStr) return false
-  const daysSinceTouch = daysDiff(client.lastTouchDate, todayStr)
+  const daysSinceTouch = daysDiff(resolveTouchDate(client, todayStr), todayStr)
   return daysSinceTouch < graceDays
 }
 
@@ -203,7 +260,7 @@ async function analyzeLeadWithGroq(groq, lead, config) {
     return taskText
   } catch (error) {
     console.error(`Groq error for client ${lead.clientId}:`, error)
-    return `Проверь статус по клиенту ${lead.clientName} — последний контакт был ${lead.daysSinceTouch} дней назад.`
+    return `Проверь статус по клиенту ${lead.clientName} — последний контакт был ${daysAgoPhrase(lead.daysSinceTouch)}.`
   }
 }
 
@@ -344,7 +401,7 @@ async function runAnalysis() {
     if (hasPlannedNextStep(client)) continue
     // Waiting for client reply — do not nag until follow-up day / grace period
     if (shouldSkipWhileWaiting(client, todayStr, config.waitChaseMinDays)) continue
-    const daysSinceTouch = daysDiff(client.lastTouchDate, todayStr)
+    const daysSinceTouch = daysDiff(resolveTouchDate(client, todayStr), todayStr)
     if (daysSinceTouch === 0) continue
     candidates.push({ client, daysSinceTouch })
   }

@@ -24,7 +24,7 @@ import {
 } from '@/types/aiConfig.types'
 import type { Client, ClientHistoryEntry } from '@/types/client.types'
 import { buildPromptFromTemplate } from '@/utils/aiPrompt'
-import { calculateActiveMonths, daysDiff } from '@/utils/dateUtils'
+import { calculateActiveMonths, daysSinceMovement, daysSinceTouch } from '@/utils/dateUtils'
 import { resolveOpenedMonth } from '@/utils/leadActivity'
 import { stageLabel } from '@/constants/clientStages'
 import { todayISO, toISODate } from '@/utils/dates'
@@ -176,6 +176,15 @@ export function AiSettings() {
       const histSnap = await getDocs(histQ)
       const history = histSnap.docs.map((d) => d.data() as ClientHistoryEntry)
       const today = new Date()
+      const recentHistory = history.map((h) => ({
+        type: h.type,
+        text: h.text,
+        authorName: h.authorName,
+        date: (() => {
+          const sec = (h.createdAt as { seconds?: number } | null)?.seconds
+          return sec ? toISODate(new Date(sec * 1000)) : todayISO()
+        })(),
+      }))
       const snapshot = {
         clientName: client.name,
         company: client.company || '',
@@ -184,18 +193,10 @@ export function AiSettings() {
         waitStatus: client.waitStatus || null,
         nextStep: client.nextStep || null,
         nextStepDeadline: client.nextStepDeadline || null,
-        daysSinceTouch: daysDiff(client.lastTouchDate, today),
-        daysSinceMovement: daysDiff(client.lastStageChangeDate, today),
+        daysSinceTouch: daysSinceTouch(client, today, { historyDate: recentHistory[0]?.date }),
+        daysSinceMovement: daysSinceMovement(client, today),
         activeMonthsCount: calculateActiveMonths(resolveOpenedMonth(client)),
-        recentHistory: history.map((h) => ({
-          type: h.type,
-          text: h.text,
-          authorName: h.authorName,
-          date: (() => {
-            const sec = (h.createdAt as { seconds?: number } | null)?.seconds
-            return sec ? toISODate(new Date(sec * 1000)) : todayISO()
-          })(),
-        })),
+        recentHistory,
       }
 
       const prompt = buildPromptFromTemplate(form.promptTemplate, snapshot, form)

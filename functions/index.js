@@ -95,11 +95,51 @@ function tashkentMonth() {
   return tashkentToday().slice(0, 7)
 }
 
+function isIsoDay(value) {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
+}
+
 function daysDiff(fromDate, todayStr) {
-  if (!fromDate) return 999
+  if (!isIsoDay(fromDate) || !isIsoDay(todayStr)) return 0
   const from = new Date(`${fromDate}T00:00:00`)
   const to = new Date(`${todayStr}T00:00:00`)
-  return Math.round((to.getTime() - from.getTime()) / 86400000)
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return 0
+  return Math.max(0, Math.round((to.getTime() - from.getTime()) / 86400000))
+}
+
+function dateFromCreatedAt(createdAt, fallback) {
+  if (!createdAt) return fallback
+  if (typeof createdAt === 'string' && createdAt.length >= 10) return createdAt.slice(0, 10)
+  if (typeof createdAt.toDate === 'function') {
+    try {
+      return createdAt.toDate().toLocaleDateString('en-CA', { timeZone: 'Asia/Tashkent' })
+    } catch {
+      /* fall through */
+    }
+  }
+  const seconds = createdAt && (createdAt.seconds || createdAt._seconds)
+  if (typeof seconds === 'number') {
+    return new Date(seconds * 1000).toLocaleDateString('en-CA', { timeZone: 'Asia/Tashkent' })
+  }
+  return fallback
+}
+
+function resolveOpenedDate(client, todayStr) {
+  if (isIsoDay(client.openedDate)) return client.openedDate
+  if (typeof client.openedMonth === 'string' && /^\d{4}-\d{2}$/.test(client.openedMonth)) {
+    return `${client.openedMonth}-01`
+  }
+  return dateFromCreatedAt(client.createdAt, todayStr)
+}
+
+function resolveTouchDate(client, todayStr) {
+  if (isIsoDay(client.lastTouchDate)) return client.lastTouchDate
+  return resolveOpenedDate(client, todayStr)
+}
+
+function resolveMovementDate(client, todayStr) {
+  if (isIsoDay(client.lastStageChangeDate)) return client.lastStageChangeDate
+  return resolveOpenedDate(client, todayStr)
 }
 
 function monthDiff(openedMonth, todayStr) {
@@ -131,9 +171,9 @@ function calculateActivityStatus(client, todayStr) {
   if (activeMonths >= 4) return 'frozen'
   if (activeMonths === 1) return 'new'
   const failedCount = [
-    daysDiff(client.lastTouchDate, todayStr) > 14,
+    daysDiff(resolveTouchDate(client, todayStr), todayStr) > 14,
     !client.nextStepDeadline || client.nextStepDeadline < todayStr,
-    daysDiff(client.lastStageChangeDate, todayStr) > 45,
+    daysDiff(resolveMovementDate(client, todayStr), todayStr) > 45,
   ].filter(Boolean).length
   if (failedCount === 0) return 'active'
   if (failedCount === 1) return 'critical'
@@ -200,7 +240,7 @@ exports.dailyLeadActivityCheck = onSchedule(
       }
 
       const link = `/crm?client=${client.id}`
-      const daysSinceTouch = daysDiff(client.lastTouchDate, todayStr)
+      const daysSinceTouch = daysDiff(resolveTouchDate(client, todayStr), todayStr)
 
       if (daysSinceTouch === 14 && client.assignedTo) {
         await writeNotice(db, {

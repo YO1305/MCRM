@@ -1,9 +1,56 @@
 import { daysBetween, getCurrentMonth, parseISODate, todayISO, toISODate } from '@/utils/dates'
 
-/** Days between YYYY-MM-DD and a Date. Null = very old. */
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/
+const ISO_MONTH = /^\d{4}-\d{2}$/
+
+function isIsoDay(value: string | null | undefined): value is string {
+  return Boolean(value && ISO_DAY.test(value))
+}
+
+type OpenedDateSource = {
+  lastTouchDate?: string | null
+  lastStageChangeDate?: string | null
+  openedDate?: string | null
+  openedMonth?: string | null
+  createdAt?: unknown
+}
+
+/**
+ * Days between YYYY-MM-DD and a Date.
+ * Missing/invalid date is treated as today (0), never a fake "999 days".
+ */
 export function daysDiff(fromDate: string | null | undefined, toDate: Date = new Date()): number {
-  if (!fromDate) return 999
-  return daysBetween(fromDate, toISODate(toDate))
+  const today = toISODate(toDate)
+  if (!isIsoDay(fromDate)) return 0
+  return Math.max(0, daysBetween(fromDate, today))
+}
+
+/** Last real contact: lastTouchDate, else lead open / created date. */
+export function resolveTouchDate(
+  client: OpenedDateSource,
+  extra?: { historyDate?: string | null },
+): string {
+  if (isIsoDay(client.lastTouchDate)) return client.lastTouchDate
+  if (isIsoDay(extra?.historyDate)) return extra.historyDate
+  return resolveOpenedDateFromClient(client)
+}
+
+/** Last funnel movement: lastStageChangeDate, else lead open / created date. */
+export function resolveMovementDate(client: OpenedDateSource): string {
+  if (isIsoDay(client.lastStageChangeDate)) return client.lastStageChangeDate
+  return resolveOpenedDateFromClient(client)
+}
+
+export function daysSinceTouch(
+  client: OpenedDateSource,
+  toDate: Date = new Date(),
+  extra?: { historyDate?: string | null },
+): number {
+  return daysDiff(resolveTouchDate(client, extra), toDate)
+}
+
+export function daysSinceMovement(client: OpenedDateSource, toDate: Date = new Date()): number {
+  return daysDiff(resolveMovementDate(client), toDate)
 }
 
 /** Whole months between "YYYY-MM" and today (0-based). */
@@ -82,10 +129,10 @@ export function resolveOpenedMonthFromClient(client: {
   openedMonth?: string | null
   createdAt?: unknown
 }): string {
-  if (client.openedDate && /^\d{4}-\d{2}-\d{2}$/.test(client.openedDate)) {
+  if (isIsoDay(client.openedDate)) {
     return client.openedDate.slice(0, 7)
   }
-  if (client.openedMonth && /^\d{4}-\d{2}$/.test(client.openedMonth)) {
+  if (client.openedMonth && ISO_MONTH.test(client.openedMonth)) {
     return client.openedMonth
   }
   return openedMonthFromCreatedAt(client.createdAt) || getCurrentMonth()
@@ -96,10 +143,10 @@ export function resolveOpenedDateFromClient(client: {
   openedMonth?: string | null
   createdAt?: unknown
 }): string {
-  if (client.openedDate && /^\d{4}-\d{2}-\d{2}$/.test(client.openedDate)) {
+  if (isIsoDay(client.openedDate)) {
     return client.openedDate
   }
-  if (client.openedMonth && /^\d{4}-\d{2}$/.test(client.openedMonth)) {
+  if (client.openedMonth && ISO_MONTH.test(client.openedMonth)) {
     return `${client.openedMonth}-01`
   }
   return openedDateFromCreatedAt(client.createdAt) || todayISO()

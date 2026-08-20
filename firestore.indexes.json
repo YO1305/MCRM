@@ -17,6 +17,14 @@
       ]
     },
     {
+      "collectionGroup": "client_history",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "clientId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "ai_tasks",
       "queryScope": "COLLECTION",
       "fields": [

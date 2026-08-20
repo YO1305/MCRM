@@ -8,14 +8,16 @@ import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { POSITION_LABELS } from '@/constants/positions'
 import { subscribeToCollection } from '@/firebase/firestore'
-import { runAiLeadAnalysisNow } from '@/firebase/callable'
+import { runAiLeadAnalysisNow, runActivityAnalysisNow } from '@/firebase/callable'
 import type { Task } from '@/types/task.types'
 import { useAiConfig } from '@/hooks/useAiConfig'
+import { useAiActivityConfig } from '@/hooks/useAiActivityConfig'
 import { canSeeLeadActivity, countLeadActivity } from '@/utils/leadActivity'
+import { countGroqActivity, formatMonthNominative, monthBarWidth } from '@/utils/groqLeadActivity'
+import { getCurrentMonth, todayISO, toISODate } from '@/utils/dates'
 import { syncOpenedMonthsFromHistory } from '@/utils/syncOpenedMonths'
 import { clearStaleOverdueDeadlines } from '@/utils/clearStaleOverdues'
 import { backfillLastTouchDates } from '@/utils/backfillLastTouchDates'
-import { todayISO, toISODate } from '@/utils/dates'
 
 export function Dashboard() {
   const { user, isAdmin } = useAuth()
@@ -23,6 +25,12 @@ export function Dashboard() {
   const { tasks: aiTasks } = useAiTasks()
   const showActivity = isAdmin || canSeeLeadActivity(user)
   const { config: aiConfig } = useAiConfig()
+  const { config: groqActivityConfig } = useAiActivityConfig()
+  const month = getCurrentMonth()
+  const groqCounts = useMemo(() => countGroqActivity(clients, month), [clients, month])
+  const groqTotal =
+    groqCounts.active + groqCounts.passive + groqCounts.paused + groqCounts.unlabeled
+  const [activityRunning, setActivityRunning] = useState(false)
   const activityCounts = useMemo(
     () =>
       countLeadActivity(clients, {
@@ -284,6 +292,65 @@ export function Dashboard() {
               <p className="mt-1 text-2xl font-bold text-gray-600">{activityCounts.frozen}</p>
             </div>
           </div>
+        </Card>
+      )}
+
+      {isAdmin && (
+        <Card className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-lg font-semibold text-text">
+              Активность лидов — {formatMonthNominative(month)} {month.slice(0, 4)}
+            </h2>
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              disabled={activityRunning}
+              onClick={() => {
+                void (async () => {
+                  setActivityRunning(true)
+                  try {
+                    const result = await runActivityAnalysisNow({ force: true })
+                    alert(
+                      `Анализ: обработано ${result.processed || 0}` +
+                        (result.remaining
+                          ? `, осталось ${result.remaining} — нажмите ещё раз`
+                          : ''),
+                    )
+                  } catch (err) {
+                    console.error(err)
+                    alert(err instanceof Error ? err.message : 'Не удалось запустить анализ')
+                  } finally {
+                    setActivityRunning(false)
+                  }
+                })()
+              }}
+            >
+              {activityRunning ? 'Анализ…' : 'Запустить анализ сейчас'}
+            </Button>
+          </div>
+          <p className="text-xs text-muted">
+            Groq смотрит историю за месяц. Порог: {groqActivityConfig?.minActiveDays ?? 10} дней.
+            Пассивных не блокируем — это только оценка.
+          </p>
+          {(
+            [
+              ['Активные', groqCounts.active, 'bg-emerald-500'],
+              ['Пассивные', groqCounts.passive, 'bg-amber-500'],
+              ['На паузе', groqCounts.paused, 'bg-gray-400'],
+              ['Не оценены', groqCounts.unlabeled, 'bg-blue-300'],
+            ] as const
+          ).map(([label, value, bar]) => (
+            <div key={label}>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted">{label}</span>
+                <span className="font-semibold text-text">{value}</span>
+              </div>
+              <div className="mt-1 h-2 overflow-hidden rounded-full bg-background">
+                <div className={`h-full ${bar}`} style={{ width: monthBarWidth(value, groqTotal) }} />
+              </div>
+            </div>
+          ))}
         </Card>
       )}
 

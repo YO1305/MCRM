@@ -322,5 +322,10 @@ service cloud.firestore {
         allow update, delete: if isAdmin();
       }
     }
+
+    match /ai_activity_config/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
   }
 }

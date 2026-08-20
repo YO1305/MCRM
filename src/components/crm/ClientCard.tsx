@@ -15,8 +15,13 @@ import { clientHasActiveStep, clientStepOverdue } from '@/utils/clientWork'
 import { useClientStages } from '@/hooks/useClientStages'
 import { useAuth } from '@/hooks/useAuth'
 import { ActivityBadge } from '@/components/crm/ActivityBadge'
+import { GroqActivityBadge } from '@/components/crm/GroqActivityBadge'
+import { ActiveDaysMeter } from '@/components/crm/ActiveDaysMeter'
 import { calculateActiveMonths } from '@/utils/dateUtils'
 import { canSeeLeadActivity, resolveActivityStatus, resolveOpenedMonth } from '@/utils/leadActivity'
+import { useAiActivityConfig } from '@/hooks/useAiActivityConfig'
+import { groqActivityIsCurrent } from '@/utils/groqLeadActivity'
+import { getCurrentMonth } from '@/utils/dates'
 
 interface ClientCardProps {
   client: Client
@@ -36,6 +41,10 @@ export function ClientCard({
   const { funnel, closed: archiveStages } = useClientStages()
   const { user, isAdmin } = useAuth()
   const showActivity = isAdmin || canSeeLeadActivity(user)
+  const { config: activityConfig } = useAiActivityConfig()
+  const month = getCurrentMonth()
+  const groqCurrent = groqActivityIsCurrent(client, month)
+  const minDays = activityConfig?.minActiveDays ?? 10
   const [moreOpen, setMoreOpen] = useState(false)
 
   const isArchived = stageIsClosed(client.stage)
@@ -70,6 +79,14 @@ export function ClientCard({
               months={calculateActiveMonths(resolveOpenedMonth(client))}
             />
           )}
+          {isAdmin && (
+            <GroqActivityBadge
+              label={client.activityLabel}
+              days={client.activeDaysThisMonth}
+              reason={client.activityReason}
+              current={groqCurrent}
+            />
+          )}
         </div>
 
         <div className="mt-1.5 space-y-1 text-xs text-muted">
@@ -90,6 +107,12 @@ export function ClientCard({
               {stepOverdue ? ' · просрок' : ''}
             </p>
           )}
+          <ActiveDaysMeter
+            days={client.activeDaysThisMonth}
+            minDays={minDays}
+            month={month}
+            current={groqCurrent}
+          />
         </div>
 
         <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-muted">

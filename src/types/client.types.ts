@@ -56,8 +56,9 @@ export interface Client {
   gpTypes: string[]
   category: LeadCategory | null
   categories: LeadCategory[]
-  kpiLeadCounted: boolean
-  kpiLeadMonth: string | null
+  /** @deprecated No new writes. Old documents may still have this. */
+  kpiLeadCounted?: boolean
+  kpiLeadMonth?: string | null
   /** Отдел продаж: fabric | finished | export | dept id / type */
   salesDepartment: string | null
   salesManagerId: string | null
@@ -83,6 +84,13 @@ export interface Client {
   openedMonth?: string | null
   activityStatus?: ActivityStatus
   activeMonthsCount?: number
+  /** Groq monthly activity (active/passive/paused) */
+  activityScore?: number | null
+  activityLabel?: 'active' | 'passive' | 'paused' | null
+  activityMonth?: string | null
+  activityAnalyzedAt?: unknown
+  activityReason?: string | null
+  activeDaysThisMonth?: number | null
   createdAt: unknown
   updatedAt: unknown
 }

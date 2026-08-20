@@ -186,6 +186,36 @@ export async function runAiLeadAnalysisNow(): Promise<AiLeadAnalysisResult> {
   return adminApi<AiLeadAnalysisResult>('/api/ai-lead-analysis', {})
 }
 
+export interface GroqActivityAnalysisResult {
+  ok: boolean
+  month?: string
+  candidates?: number
+  processed?: number
+  remaining?: number
+  errors?: number
+  skippedAll?: boolean
+  reason?: string
+  result?: {
+    label: 'active' | 'passive' | 'paused'
+    score: number
+    reason: string
+    activeDaysCount: number
+    minActiveDays: number
+    clientName?: string
+  }
+}
+
+/** Admin: Groq monthly active/passive analysis (batch or one client). */
+export async function runActivityAnalysisNow(input?: {
+  clientId?: string
+  force?: boolean
+  test?: boolean
+  activityPrompt?: string
+  minActiveDays?: number
+}): Promise<GroqActivityAnalysisResult> {
+  return adminApi<GroqActivityAnalysisResult>('/api/ai-activity-analysis', input || {})
+}
+
 /** Admin: test Groq prompt without saving an AI task. */
 export async function runAiPromptTest(input: {
   prompt: string

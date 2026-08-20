@@ -16,10 +16,12 @@ import { CrmAiTasksPanel } from '@/components/crm/CrmAiTasksPanel'
 import { type ClientStage, stageIsClosed, stageIsWon } from '@/constants/clientStages'
 import { useClientStages } from '@/hooks/useClientStages'
 import { POSITION_LABELS } from '@/constants/positions'
-import { todayISO } from '@/utils/dates'
+import { todayISO, getCurrentMonth } from '@/utils/dates'
 import { clientActionDeadline } from '@/utils/clientWork'
 import type { ActivityStatus, Client } from '@/types/client.types'
+import type { GroqActivityLabel } from '@/types/aiActivity.types'
 import { canSeeLeadActivity, resolveActivityStatus } from '@/utils/leadActivity'
+import { groqActivityIsCurrent } from '@/utils/groqLeadActivity'
 import { useAiConfig } from '@/hooks/useAiConfig'
 
 type CrmSection = 'funnel' | 'ai'
@@ -60,6 +62,7 @@ export function CRM() {
   const [assigneeFilter, setAssigneeFilter] = useState('all')
   const [waitFilter, setWaitFilter] = useState('all')
   const [activityFilter, setActivityFilter] = useState<ActivityStatus | 'all'>('all')
+  const [groqFilter, setGroqFilter] = useState<GroqActivityLabel | 'all'>('all')
   const [search, setSearch] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
@@ -167,6 +170,10 @@ export function CRM() {
       ) {
         return false
       }
+      if (isAdmin && groqFilter !== 'all') {
+        const month = getCurrentMonth()
+        if (!groqActivityIsCurrent(c, month) || c.activityLabel !== groqFilter) return false
+      }
 
       const deadline = clientActionDeadline(c)
       const inWork = !stageIsWon(c.stage) && !stageIsClosed(c.stage)
@@ -185,7 +192,7 @@ export function CRM() {
           return true
       }
     })
-  }, [scoped, search, stageFilter, waitFilter, activityFilter, showActivity, activityThresholds, scope, today])
+  }, [scoped, search, stageFilter, waitFilter, activityFilter, groqFilter, showActivity, isAdmin, activityThresholds, scope, today])
 
   async function handleStageChange(
     clientId: string,
@@ -341,6 +348,35 @@ export function CRM() {
               className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
                 activityFilter === key
                   ? 'bg-secondary text-white'
+                  : 'bg-surface text-muted shadow-sm hover:text-text'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {isAdmin && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[11px] font-medium uppercase tracking-wide text-muted">
+            За месяц
+          </span>
+          {(
+            [
+              ['all', 'Все'],
+              ['active', 'Активные'],
+              ['passive', 'Пассивные'],
+              ['paused', 'На паузе'],
+            ] as const
+          ).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setGroqFilter(key)}
+              className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                groqFilter === key
+                  ? 'bg-emerald-700 text-white'
                   : 'bg-surface text-muted shadow-sm hover:text-text'
               }`}
             >

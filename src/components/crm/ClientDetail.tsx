@@ -14,7 +14,7 @@ import type {
   SampleItem,
   SamplesShipmentInput,
 } from '@/types/client.types'
-import { stageLabel, leadKpiTrackingEnabled, type ClientStage } from '@/constants/clientStages'
+import { stageLabel, type ClientStage } from '@/constants/clientStages'
 import {
   stageBadge,
   LEAD_CATEGORIES,
@@ -33,11 +33,15 @@ import {
 } from '@/constants/leadProducts'
 import { CountrySelect } from '@/components/crm/CountrySelect'
 import { WAIT_STATUS_PRESETS } from '@/constants/waitStatus'
-import { formatISODateShort, todayISO, addDaysISO } from '@/utils/dates'
+import { formatISODateShort, todayISO, addDaysISO, getCurrentMonth } from '@/utils/dates'
 import { clientStepOverdue, visitPrepareDate } from '@/utils/clientWork'
 import { ActivityBadge } from '@/components/crm/ActivityBadge'
+import { GroqActivityBadge } from '@/components/crm/GroqActivityBadge'
+import { ActiveDaysMeter } from '@/components/crm/ActiveDaysMeter'
 import { calculateActiveMonths, resolveOpenedDateFromClient } from '@/utils/dateUtils'
 import { canSeeLeadActivity, resolveActivityStatus, resolveOpenedMonth } from '@/utils/leadActivity'
+import { useAiActivityConfig } from '@/hooks/useAiActivityConfig'
+import { groqActivityIsCurrent } from '@/utils/groqLeadActivity'
 
 interface ClientDetailProps {
   client: Client | null
@@ -153,6 +157,10 @@ export function ClientDetail({
   const { entries, loading: historyLoading } = useClientHistory(client?.id || null)
   const sourceList = useOptionList('client_source')
   const { pipeline } = useClientStages()
+  const { config: activityConfig } = useAiActivityConfig()
+  const month = getCurrentMonth()
+  const groqCurrent = groqActivityIsCurrent(client || {}, month)
+  const minDays = activityConfig?.minActiveDays ?? 10
 
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
@@ -542,6 +550,14 @@ export function ClientDetail({
                 months={calculateActiveMonths(resolveOpenedMonth(client))}
               />
             )}
+            {isAdmin && (
+              <GroqActivityBadge
+                label={client.activityLabel}
+                days={client.activeDaysThisMonth}
+                reason={client.activityReason}
+                current={groqCurrent}
+              />
+            )}
             <Badge variant="default">{sourceList.labelOf(source)}</Badge>
             <Badge variant="info">{countryName(country)}</Badge>
             {categories.map((c) => (
@@ -580,26 +596,17 @@ export function ClientDetail({
                   }`}
                 >
                   {s.label}
-                  {s.countsAsKpiLead ? ' · KPI' : ''}
                 </button>
               ))}
             </div>
           )}
 
-          {client.kpiLeadCounted && leadKpiTrackingEnabled() ? (
-            <div className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700">
-              Лид зафиксирован в KPI — {client.kpiLeadMonth}
-            </div>
-          ) : leadKpiTrackingEnabled() ? (
-            <div className="rounded-lg bg-background px-3 py-2 text-xs text-muted">
-              Лид зафиксируется при переходе на этап с отметкой «Лид KPI» (настройка в
-              Настройках)
-            </div>
-          ) : (
-            <div className="rounded-lg bg-background px-3 py-2 text-xs text-muted">
-              Учёт «Лид KPI» выключен — ни на одном этапе нет галочки «Лид KPI»
-            </div>
-          )}
+          <ActiveDaysMeter
+            days={client.activeDaysThisMonth}
+            minDays={minDays}
+            month={month}
+            current={groqCurrent}
+          />
 
           <div className="flex flex-wrap gap-1.5 border-b border-gray-100 pb-3">
             {(

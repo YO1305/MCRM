@@ -5,6 +5,7 @@ const { initializeApp } = require('firebase-admin/app')
 const { getAuth } = require('firebase-admin/auth')
 const { getFirestore, FieldValue } = require('firebase-admin/firestore')
 const { runDailyAiLeadAnalysis } = require('./groqAnalyzer')
+const { runActivityAnalysis } = require('./leadActivityAnalyzer')
 
 initializeApp()
 
@@ -318,5 +319,47 @@ exports.runAiLeadAnalysisNow = onCall(
     }
     await runDailyAiLeadAnalysis(db, groqApiKey.value())
     return { ok: true }
+  },
+)
+
+/** Daily 08:05 Tashkent — Groq active/passive/paused for open leads */
+exports.dailyLeadActivityAnalysis = onSchedule(
+  {
+    schedule: '5 8 * * *',
+    timeZone: 'Asia/Tashkent',
+    region: 'us-central1',
+    secrets: [groqApiKey],
+    timeoutSeconds: 540,
+    memory: '512MiB',
+  },
+  async () => {
+    const db = getFirestore()
+    await runActivityAnalysis(db, groqApiKey.value(), { maxClients: 80 })
+  },
+)
+
+/** Admin-only: run Groq monthly activity analysis now */
+exports.runActivityAnalysisNow = onCall(
+  {
+    region: 'us-central1',
+    cors: true,
+    secrets: [groqApiKey],
+    timeoutSeconds: 540,
+    memory: '512MiB',
+  },
+  async (request) => {
+    if (!request.auth?.uid) {
+      throw new HttpsError('unauthenticated', 'Нужно войти в систему')
+    }
+    const db = getFirestore()
+    const caller = await db.collection('users').doc(request.auth.uid).get()
+    if (!caller.exists || caller.data()?.role !== 'admin') {
+      throw new HttpsError('permission-denied', 'Только администратор')
+    }
+    return runActivityAnalysis(db, groqApiKey.value(), {
+      maxClients: 80,
+      clientId: request.data?.clientId || null,
+      force: Boolean(request.data?.force),
+    })
   },
 )

@@ -10,7 +10,6 @@ import { useAuth } from '@/hooks/useAuth'
 import type { Client, ClientInput, ProductKind, SamplesShipmentInput } from '@/types/client.types'
 import type { ClientStage } from '@/constants/clientStages'
 import {
-  stageCountsAsKpiLead,
   stageIsClosed,
   stageLabel,
   stageKpiBucket,
@@ -58,52 +57,6 @@ const emptySales = {
   nextStepDeadline: null as string | null,
   visitDate: null as string | null,
   visitNote: null as string | null,
-}
-
-async function fixKpiLeadIfNeeded(
-  client: Client,
-  newStage: ClientStage,
-  author?: { id: string; name: string },
-  previousStage?: ClientStage,
-) {
-  if (!stageCountsAsKpiLead(newStage)) return
-  if (client.kpiLeadCounted) return
-
-  const month = getCurrentMonth()
-  const categories = resolveKpiCategories(client.country, client.products || [])
-  const category = primaryKpiCategory(categories)
-
-  await updateDocument('clients', client.id, {
-    kpiLeadCounted: true,
-    kpiLeadMonth: month,
-    category,
-    categories,
-  })
-
-  await createDocument('kpi_lead_log', {
-    clientId: client.id,
-    clientName: client.name,
-    assignedTo: client.assignedTo,
-    assignedToName: client.assignedToName,
-    category,
-    categories,
-    country: client.country || null,
-    month,
-    fixedAt: new Date().toISOString(),
-    stage: newStage,
-  })
-
-  if (author) {
-    await createDocument('client_history', {
-      clientId: client.id,
-      type: 'stage_change',
-      text: `Контакт зафиксирован как лид в KPI (${stageLabel(newStage)}) — ${month}`,
-      fromStage: previousStage || null,
-      toStage: newStage,
-      authorId: author.id,
-      authorName: author.name,
-    })
-  }
 }
 
 export function useClients() {
@@ -226,8 +179,6 @@ export function useClients() {
       gpTypes,
       category,
       categories,
-      kpiLeadCounted: false,
-      kpiLeadMonth: null,
       lastTouchDate: today,
       lastStageChangeDate: today,
       openedDate: today,
@@ -270,40 +221,6 @@ export function useClients() {
       authorId: user.id,
       authorName: user.name,
     })
-
-    if (stageCountsAsKpiLead(stage)) {
-      await fixKpiLeadIfNeeded(
-        {
-          id: clientId,
-          name: input.name.trim(),
-          phone: input.phone.trim(),
-          company: (input.company || '').trim(),
-          email: (input.email || '').trim(),
-          stage,
-          source: input.source || 'other',
-          notes: (input.notes || '').trim(),
-          assignedTo: assignee.id,
-          assignedToName: assignee.name,
-          createdBy: user.id,
-          createdByName: user.name,
-          nextContactDate: input.nextContactDate || null,
-          dealAmount: input.dealAmount ?? null,
-          country: input.country,
-          products,
-          fabricTypes,
-          gpTypes,
-          category,
-          categories,
-          kpiLeadCounted: false,
-          kpiLeadMonth: null,
-          ...emptySales,
-          createdAt: null,
-          updatedAt: null,
-        },
-        stage,
-        { id: user.id, name: user.name },
-      )
-    }
 
     return clientId
   }
@@ -377,24 +294,6 @@ export function useClients() {
       })
 
       if (client) {
-        await fixKpiLeadIfNeeded(
-          {
-            ...client,
-            ...emptySales,
-            ...client,
-            country: (nextCountry as string | null) ?? client.country,
-            products: nextProducts,
-            categories: (patch.categories as LeadCategory[]) || client.categories || [],
-            category: (patch.category as LeadCategory) || client.category,
-            fabricTypes:
-              data.fabricTypes !== undefined ? data.fabricTypes : client.fabricTypes || [],
-            gpTypes: data.gpTypes !== undefined ? data.gpTypes : client.gpTypes || [],
-          },
-          data.stage,
-          { id: user.id, name: user.name },
-          opts.previousStage,
-        )
-
         if (!stageIsClosed(data.stage)) {
           void markContactActive({
             contactId: client.contactId,
@@ -431,19 +330,6 @@ export function useClients() {
         authorName: user.name,
       })
     }
-
-    await fixKpiLeadIfNeeded(
-      {
-        ...client,
-        products: client.products || [],
-        fabricTypes: client.fabricTypes || [],
-        gpTypes: client.gpTypes || [],
-        categories: client.categories || (client.category ? [client.category] : []),
-      },
-      stage,
-      { id: user.id, name: user.name },
-      previousStage,
-    )
 
     if (!stageIsClosed(stage)) {
       void markContactActive({

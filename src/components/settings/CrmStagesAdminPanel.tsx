@@ -88,12 +88,7 @@ export function CrmStagesAdminPanel() {
       const ordered = draft.map((s, i) => ({ ...s, order: (i + 1) * 10 }))
       await saveStages(ordered)
       setEditing(false)
-      const anyLead = ordered.some((s) => s.active && s.countsAsKpiLead)
-      setMsg(
-        anyLead
-          ? 'Этапы воронки сохранены'
-          : 'Этапы сохранены. «Лид KPI» нигде не включён — галочки KPI на карточках скрыты. Чтобы стереть старые отметки из базы — нажмите «Сбросить отметки KPI».',
-      )
+      setMsg('Этапы воронки сохранены')
     } catch (err) {
       console.error(err)
       setMsg(err instanceof Error ? err.message : 'Ошибка сохранения')
@@ -105,7 +100,7 @@ export function CrmStagesAdminPanel() {
   async function clearKpiBadges() {
     if (
       !confirm(
-        'Сбросить отметки «KPI ✓» на всех карточках клиентов?\n\nВ отчётах KPI за прошлые месяцы записи останутся. Новые лиды будут считаться только при переходе на этап с галочкой «Лид KPI».',
+        'Сбросить старые отметки KPI на карточках?\n\nЖурнал KPI за прошлые месяцы останется. Новые лиды с этапов больше не пишутся.',
       )
     ) {
       return
@@ -139,9 +134,9 @@ export function CrmStagesAdminPanel() {
         <div>
           <h2 className="text-lg font-semibold text-text">Этапы воронки CRM</h2>
           <p className="mt-1 text-xs text-muted">
-            Галочка «Лид KPI» на этапе = при переходе клиент один раз попадает в KPI.
-            Зелёная «KPI ✓» на карточке — старая отметка «уже посчитан»; она не снимается
-            сама при снятии галочек с этапов. Не забудьте нажать «Сохранить».
+            Этапы воронки. «Лид KPI» с перехода по этапам больше не считается — активность
+            смотрит Groq (Настройки → ИИ Помощник → Активность лидов). Не забудьте нажать
+            «Сохранить».
           </p>
         </div>
         {!editing ? (
@@ -188,7 +183,6 @@ export function CrmStagesAdminPanel() {
                 {s.isRejected && <Badge variant="danger">Отказ</Badge>}
                 {s.isFailed && <Badge variant="danger">Провалено</Badge>}
                 {s.isAbandoned && <Badge variant="warning">Заброшено</Badge>}
-                {s.countsAsKpiLead && <Badge variant="info">Лид KPI</Badge>}
                 {s.kpiBucket === 'deal' && <Badge variant="success">Сделка KPI</Badge>}
                 {stageOptionIsClosed(s) && <Badge variant="default">Архив</Badge>}
               </li>
@@ -254,31 +248,6 @@ export function CrmStagesAdminPanel() {
                       }}
                     />
                     Активен
-                  </label>
-                  <label className="flex items-center gap-1">
-                    <input
-                      type="checkbox"
-                      checked={s.countsAsKpiLead}
-                      onChange={(e) => {
-                        const countsAsKpiLead = e.target.checked
-                        setDraft((d) =>
-                          d.map((x, i) =>
-                            i === idx
-                              ? {
-                                  ...x,
-                                  countsAsKpiLead,
-                                  kpiBucket: countsAsKpiLead
-                                    ? 'lead'
-                                    : x.kpiBucket === 'lead'
-                                      ? 'none'
-                                      : x.kpiBucket,
-                                }
-                              : x,
-                          ),
-                        )
-                      }}
-                    />
-                    Лид KPI
                   </label>
                   <select
                     value={closeKindOf(s)}

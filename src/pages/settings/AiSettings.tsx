@@ -29,8 +29,9 @@ import { resolveOpenedMonth } from '@/utils/leadActivity'
 import { stageLabel } from '@/constants/clientStages'
 import { todayISO, toISODate } from '@/utils/dates'
 import { POSITION_LABELS } from '@/constants/positions'
+import { AiActivitySettings } from '@/pages/settings/AiActivitySettings'
 
-type TabId = 'main' | 'prompt' | 'managers' | 'history'
+type TabId = 'main' | 'prompt' | 'managers' | 'history' | 'activity'
 
 function formatWhen(value: unknown): string {
   if (!value) return '—'
@@ -253,6 +254,7 @@ export function AiSettings() {
           [
             ['main', 'Основные'],
             ['prompt', 'Промпт'],
+            ['activity', 'Активность лидов'],
             ['managers', 'Менеджеры'],
             ['history', 'История'],
           ] as const
@@ -518,6 +520,8 @@ export function AiSettings() {
           </div>
         </Card>
       )}
+
+      {tab === 'activity' && <AiActivitySettings />}
 
       {tab === 'managers' && (
         <Card className="space-y-4">

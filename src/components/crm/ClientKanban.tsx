@@ -51,7 +51,6 @@ export function ClientKanban({
               <div className="flex items-center justify-between px-1 py-1.5">
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">
                   {stage.label}
-                  {stage.countsAsKpiLead ? ' · KPI' : ''}
                 </h3>
                 <span className="rounded-full bg-surface px-2 py-0.5 text-xs font-medium text-text">
                   {column.length}

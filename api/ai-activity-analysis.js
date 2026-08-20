@@ -102,7 +102,7 @@ export default async function handler(req, res) {
     const result = await runActivityAnalysis(db, apiKey, {
       maxClients: Number(body.maxClients) || MAX_LEADS_PER_RUN,
       clientId: body.clientId ? String(body.clientId) : null,
-      force: Boolean(body.force),
+      force: req.method === 'POST' ? body.force !== false : Boolean(body.force),
     })
     return res.status(200).json(result)
   } catch (err) {

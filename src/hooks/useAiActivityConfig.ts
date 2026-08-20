@@ -8,6 +8,7 @@ import {
   AI_ACTIVITY_DOC_ID,
   DEFAULT_AI_ACTIVITY_CONFIG,
   DEFAULT_ACTIVITY_PROMPT,
+  isLegacyActivityPrompt,
   type AiActivityConfig,
 } from '@/types/aiActivity.types'
 
@@ -16,7 +17,10 @@ function normalizeConfig(raw: Partial<AiActivityConfig> | undefined): AiActivity
     ...DEFAULT_AI_ACTIVITY_CONFIG,
     ...raw,
     minActiveDays: Math.max(1, Number(raw?.minActiveDays ?? DEFAULT_AI_ACTIVITY_CONFIG.minActiveDays) || 10),
-    activityPrompt: raw?.activityPrompt || DEFAULT_ACTIVITY_PROMPT,
+    activityPrompt:
+      !raw?.activityPrompt || isLegacyActivityPrompt(raw.activityPrompt)
+        ? DEFAULT_ACTIVITY_PROMPT
+        : raw.activityPrompt,
     isActive: raw?.isActive !== false,
   }
 }

@@ -20,52 +20,46 @@ const STAGE_LABELS = {
 
 const SKIP_TYPES = new Set(['created', 'system', 'auto'])
 
-const DEFAULT_ACTIVITY_PROMPT = `Ты аналитик CRM системы текстильной компании BAHMAL HOME (Узбекистан).
+const HISTORY_TYPE_LABELS = {
+  note: 'Комментарий',
+  call: 'Итог звонка',
+  sales_note: 'Комментарий продаж',
+  sales_assigned: 'Назначен менеджер продаж',
+  stage_change: 'Смена этапа',
+  wait_status: 'Статус ожидания',
+  next_step: 'Следующий шаг',
+  visit: 'Визит',
+  samples_sent: 'Отправка образцов',
+}
 
-Проанализируй активность по клиенту за текущий месяц и определи:
-активный лид или пассивный.
+const DEFAULT_ACTIVITY_PROMPT = `Ты смотришь журнал CRM BAHMAL HOME, не чат с клиентом.
+В истории почти никогда нет прямой речи клиента — это нормально.
 
-ДАННЫЕ КЛИЕНТА:
+Твоя задача: одной фразой на русском сказать, ЧТО менеджер делал с лидом в этом месяце.
+Метку active/passive/paused ставит система по журналу, не ты. Но label в JSON всё равно заполни так:
+- active — в истории есть работа (шаг, этап, звонок, комментарий, ТЗ, цены, образцы, продажи)
+- passive — за месяц журнала нет
+- paused — в карточке «На паузе» и другой работы нет
+
+Примеры работы (это active):
+- «Шаг выполнен: Предоставить цены на основе ТЗ»
+- «КП отправлено → ТЗ получено»
+- «Итог звонка…», комментарий, визит, образцы, назначение продаж
+
+Не ставь passive из‑за «нет ответа клиента» или «запись формальная».
+
+ДАННЫЕ:
 - Имя: {clientName}
-- Этап воронки: {stage}
-- Статус ожидания: {waitStatus}
-- Дней с активностью в этом месяце: {activeDaysCount} (минимум нужно: {minActiveDaysRequired})
-- Дней без контакта: {daysSinceLastTouch}
+- Этап: {stage}
+- Ожидание: {waitStatus}
+- Дней с записями: {activeDaysCount}
+- Дней без касания: {daysSinceLastTouch}
 
-ИСТОРИЯ ЗА ТЕКУЩИЙ МЕСЯЦ:
+ЖУРНАЛ ЗА МЕСЯЦ:
 {monthHistory}
 
-ПРАВИЛА ОЦЕНКИ:
-
-Активный лид (active) — если:
-- Идут реальные переговоры: обсуждение цены, объёма, условий, прайса, образцов
-- Клиент отвечает и задаёт вопросы по существу
-- Менеджер и клиент обмениваются конкретной информацией
-- Есть движение вперёд даже если медленное
-
-Пассивный лид (passive) — если:
-- Менеджер пишет но клиент не отвечает или отвечает формально
-- Нет конкретных обсуждений цены, объёма, условий
-- Записи формальные ("напомнил", "написал" без результата)
-
-На паузе (paused) — если:
-- Явно стоит статус "На паузе" или "Ждём решения" долго без ответа
-- Клиент попросил подождать
-- Нет активности больше 14 дней подряд
-
-ЖЁСТКО (важнее содержания):
-- Если дней с активностью >= минимума — label только "active"
-- Шаги, смена этапа, звонок, комментарий, назначение продаж = активность
-- "passive" только если дней меньше порога
-- "paused" только если статус ожидания явно "На паузе"
-- В reason кратко опиши, что было в истории
-
-Ответь строго в формате JSON:
-{
-  "label": "active" | "passive" | "paused",
-  "score": 0-100,
-  "reason": "краткое объяснение на русском (1 предложение)"
-}`
+JSON:
+{"label":"active|passive|paused","score":0-100,"reason":"одно предложение что сделали"}`
 
 function tashkentToday() {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Tashkent' })
@@ -146,40 +140,59 @@ function calculateActiveDays(entries) {
   return count
 }
 
-/** Day count wins over Groq content judgment. */
-function applyDayThreshold(result, activeDaysCount, minDays, waitStatus) {
-  const min = Math.max(1, Number(minDays) || DEFAULT_MIN_DAYS)
-  const groqLabel = result?.label
-  let label = 'passive'
-  if (isPauseText(waitStatus)) label = 'paused'
-  else if (activeDaysCount >= min) label = 'active'
+function hasCrmWork(entries) {
+  return (entries || []).some((e) => {
+    if (SKIP_TYPES.has(e.type)) return false
+    if (e.type === 'wait_status' && isPauseText(e.text)) return false
+    return Boolean(e.type || e.text)
+  })
+}
 
-  let reason = String(result?.reason || 'Авто-оценка по количеству дней')
-  if (label !== groqLabel) {
-    const prefix =
-      label === 'paused'
-        ? 'Стоит «на паузе».'
-        : `В истории ${activeDaysCount} дн. при пороге ${min} — ${
-            label === 'active' ? 'активный' : 'пассивный'
-          }.`
-    reason = `${prefix} ${reason}`.trim()
-  }
+function classifyLabel(entries, waitStatus) {
+  const work = hasCrmWork(entries)
+  if (isPauseText(waitStatus) && !work) return 'paused'
+  if (work) return 'active'
+  return 'passive'
+}
+
+function autoReason(entries, label) {
+  if (label === 'paused') return 'В карточке «на паузе», другой работы за месяц нет.'
+  if (label === 'passive') return 'За этот месяц в истории нет работы по лиду.'
+  const line = (entries || []).find((e) => !SKIP_TYPES.has(e.type) && e.text)
+  if (line?.text) return String(line.text).replace(/\s+/g, ' ').slice(0, 220)
+  return 'В истории месяца есть действия менеджера.'
+}
+
+/** Label from the CRM journal (what you see in История), not Groq chat-style rules. */
+function applyDayThreshold(result, activeDaysCount, minDays, waitStatus, entries = []) {
+  const label = classifyLabel(entries, waitStatus)
+  const groqReason = String(result?.reason || '').trim()
+  const groqLooksWrong =
+    /клиент не ответ|нет ответ|формальн|нет перегово|не отвечает/i.test(groqReason)
+  const reason = (groqReason && !groqLooksWrong ? groqReason : autoReason(entries, label)).slice(
+    0,
+    280,
+  )
 
   let score = Number(result?.score)
   if (!Number.isFinite(score)) score = 0
   if (label === 'active') {
-    score = Math.max(score, Math.min(100, Math.round((activeDaysCount / min) * 70)))
+    const min = Math.max(1, Number(minDays) || DEFAULT_MIN_DAYS)
+    score = Math.max(score, Math.min(100, 55 + activeDaysCount * 5, Math.round((activeDaysCount / min) * 80)))
   } else if (label === 'passive') {
-    score = Math.min(score, 45)
+    score = Math.min(score, 25)
   }
-  return { label, score, reason: reason.slice(0, 280) }
+  return { label, score, reason }
 }
 
 function buildActivityPrompt(template, input) {
   const historyText =
     input.monthHistory.length > 0
       ? input.monthHistory
-          .map((h) => `- ${h.date} [${h.type}] ${h.authorName}: ${h.text}`)
+          .map((h) => {
+            const type = HISTORY_TYPE_LABELS[h.type] || h.type || 'запись'
+            return `- ${h.date} — ${type}: ${h.text}`
+          })
           .join('\n')
       : '- Записей за месяц нет'
 
@@ -222,9 +235,14 @@ function parseActivityResult(raw, fallbackDays, minDays) {
 async function loadConfig(db) {
   const snap = await db.doc('ai_config/activity_settings').get()
   const data = snap.exists ? snap.data() || {} : {}
+  const storedPrompt = String(data.activityPrompt || '')
+  const legacyPrompt =
+    /клиент отвечает|смотри на содержание|формальные \(|нет конкретных обсуждений/i.test(
+      storedPrompt,
+    )
   return {
     minActiveDays: Math.max(1, Number(data.minActiveDays) || DEFAULT_MIN_DAYS),
-    activityPrompt: data.activityPrompt || DEFAULT_ACTIVITY_PROMPT,
+    activityPrompt: !storedPrompt.trim() || legacyPrompt ? DEFAULT_ACTIVITY_PROMPT : storedPrompt,
     isActive: data.isActive !== false,
   }
 }
@@ -317,6 +335,7 @@ async function analyzeOneClient(db, groq, client, config, month, todayStr) {
     activeDaysCount,
     config.minActiveDays,
     client.waitStatus,
+    history,
   )
   await db.collection('clients').doc(client.id).update({
     activityScore: result.score,
@@ -393,14 +412,14 @@ async function runActivityAnalysis(db, apiKey, options = {}) {
       console.error(`Activity analysis error for ${client.id}:`, error)
       lastError = error?.message || String(error)
       try {
-        const failDays = calculateActiveDays(
-          await loadMonthHistory(db, client.id, month).catch(() => []),
-        )
+        const failHistory = await loadMonthHistory(db, client.id, month).catch(() => [])
+        const failDays = calculateActiveDays(failHistory)
         const failed = applyDayThreshold(
           { label: 'passive', score: 0, reason: 'Авто-оценка: сбой анализа' },
           failDays,
           config.minActiveDays,
           client.waitStatus,
+          failHistory,
         )
         await db.collection('clients').doc(client.id).update({
           activityScore: failed.score,
@@ -438,6 +457,7 @@ async function testClientActivity(db, apiKey, clientId, configOverride) {
     preview.input.activeDaysCount,
     preview.config.minActiveDays,
     preview.input.waitStatus,
+    preview.input.monthHistory,
   )
   return {
     label: result.label,
@@ -490,4 +510,6 @@ module.exports = {
   DEFAULT_ACTIVITY_PROMPT,
   calculateActiveDays,
   applyDayThreshold,
+  classifyLabel,
+  hasCrmWork,
 }

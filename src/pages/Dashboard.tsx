@@ -310,7 +310,7 @@ export function Dashboard() {
                 void (async () => {
                   setActivityRunning(true)
                   try {
-                    const result = await runActivityAnalysisNow()
+                    const result = await runActivityAnalysisNow({ force: true })
                     alert(
                       `Анализ: обработано ${result.processed || 0}` +
                         (result.remaining

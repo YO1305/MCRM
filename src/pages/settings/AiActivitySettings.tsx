@@ -88,7 +88,7 @@ export function AiActivitySettings() {
     setRunning(true)
     setMsg('')
     try {
-      const result = await runActivityAnalysisNow()
+      const result = await runActivityAnalysisNow({ force: true })
       setMsg(
         `Анализ: обработано ${result.processed || 0}` +
           (result.remaining ? `, осталось ${result.remaining} — нажмите ещё раз` : '') +
@@ -109,8 +109,8 @@ export function AiActivitySettings() {
           Настройки активности лидов
         </h2>
         <p className="mt-1 text-sm text-muted">
-          Groq читает историю за месяц. Статус активный/пассивный ставится по числу дней
-          в истории, не по формулировкам. KPI с этапов больше не фиксируется.
+          Groq читает вкладку «История» как журнал работы менеджера, не как переписку с
+          клиентом. Если за месяц есть шаги, этапы, звонки, комментарии — лид активный.
         </p>
       </div>
 
@@ -125,9 +125,8 @@ export function AiActivitySettings() {
         onChange={(e) => setMinActiveDays(Number(e.target.value))}
       />
       <p className="text-xs text-muted">
-        Лид активный, если в этом месяце столько разных дней с работой в истории (шаг, этап,
-        звонок, комментарий, продажа). Groq только пишет пояснение и не может сделать лид
-        пассивным, если дней хватает. Если дней меньше порога — пассив.
+        Шкала на карточке: сколько дней с записями. На метку active/passive не влияет —
+        активный лид, если в истории месяца вообще есть работа (как при открытии карточки).
       </p>
 
       <label className="flex items-center gap-2 text-sm">

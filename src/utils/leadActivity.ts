@@ -1,6 +1,6 @@
 import { stageIsClosed, stageIsWon } from '@/constants/clientStages'
 import type { ActivityStatus, Client } from '@/types/client.types'
-import { calculateActiveMonths, daysDiff, resolveOpenedMonthFromClient } from '@/utils/dateUtils'
+import { calculateActiveMonths, daysDiff, resolveLastTouchDate, resolveOpenedMonthFromClient } from '@/utils/dateUtils'
 import { todayISO } from '@/utils/dates'
 
 export function resolveOpenedMonth(
@@ -44,14 +44,14 @@ export function calculateActivityStatus(
   if (activeMonths === 1) return 'new'
 
   const todayISOStr = todayISO()
-  const daysSinceTouch = daysDiff(client.lastTouchDate, today)
+  const daysSinceTouch = daysDiff(resolveLastTouchDate(client), today)
   const nextStepOverdue = !client.nextStepDeadline || client.nextStepDeadline < todayISOStr
   const daysSinceMovement = daysDiff(client.lastStageChangeDate, today)
 
   const failedCount = [
-    daysSinceTouch > touchLimit,
+    daysSinceTouch != null && daysSinceTouch > touchLimit,
     nextStepOverdue,
-    daysSinceMovement > movementLimit,
+    daysSinceMovement != null && daysSinceMovement > movementLimit,
   ].filter(Boolean).length
 
   if (failedCount === 0) return 'active'

@@ -91,6 +91,7 @@ export function Tasks() {
     pending: aiPending,
     markDone: markAiDone,
     snooze: snoozeAi,
+    removeTask: removeAiTask,
   } = useAiTasks()
   const { users, loading: usersLoading, error: usersError } = useUsers(true)
   const { scanOverdue } = useNotifications()
@@ -255,6 +256,12 @@ export function Tasks() {
                   void snoozeAi(id).catch((err) => {
                     console.error(err)
                     alert('Не удалось отложить задачу')
+                  })
+                }}
+                onDelete={(id) => {
+                  void removeAiTask(id).catch((err) => {
+                    console.error(err)
+                    alert('Не удалось удалить задачу')
                   })
                 }}
               />

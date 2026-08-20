@@ -9,6 +9,7 @@ interface AiTaskCardProps {
   task: AiTask
   onDone: (taskId: string) => void
   onSnooze: (taskId: string) => void
+  onDelete?: (taskId: string) => void
   onOpenClient?: (clientId: string) => void
 }
 
@@ -31,7 +32,7 @@ function generatedLabel(value: unknown): string {
   return `${formatISODateShort(iso)} · ${time}`
 }
 
-export function AiTaskCard({ task, onDone, onSnooze, onOpenClient }: AiTaskCardProps) {
+export function AiTaskCard({ task, onDone, onSnooze, onDelete, onOpenClient }: AiTaskCardProps) {
   return (
     <article className="rounded-xl border border-violet-100 bg-violet-50/40 p-4 shadow-sm">
       <div className="flex flex-wrap items-center gap-2">
@@ -71,6 +72,20 @@ export function AiTaskCard({ task, onDone, onSnooze, onOpenClient }: AiTaskCardP
         <Button type="button" size="sm" variant="secondary" onClick={() => void onSnooze(task.id)}>
           Отложить на завтра
         </Button>
+        {onDelete && (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="text-danger hover:bg-red-50"
+            onClick={() => {
+              if (!confirm('Удалить эту ИИ-задачу?')) return
+              void onDelete(task.id)
+            }}
+          >
+            Удалить
+          </Button>
+        )}
       </div>
     </article>
   )

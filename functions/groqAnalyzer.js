@@ -23,10 +23,55 @@ function tashkentToday() {
 }
 
 function daysDiff(fromDate, todayStr) {
-  if (!fromDate) return 999
+  if (!fromDate || !/^\d{4}-\d{2}-\d{2}$/.test(String(fromDate))) return null
   const from = new Date(`${fromDate}T00:00:00`)
   const to = new Date(`${todayStr}T00:00:00`)
   return Math.round((to.getTime() - from.getTime()) / 86400000)
+}
+
+function openedDateFromCreatedAt(createdAt) {
+  if (!createdAt) return null
+  if (typeof createdAt.toDate === 'function') {
+    return createdAt.toDate().toLocaleDateString('en-CA', { timeZone: 'Asia/Tashkent' })
+  }
+  if (createdAt.seconds) {
+    return new Date(createdAt.seconds * 1000).toLocaleDateString('en-CA', {
+      timeZone: 'Asia/Tashkent',
+    })
+  }
+  return null
+}
+
+function resolveLastTouchDate(client, history) {
+  if (client.lastTouchDate && /^\d{4}-\d{2}-\d{2}$/.test(client.lastTouchDate)) {
+    return client.lastTouchDate
+  }
+  if (client.lastStageChangeDate && /^\d{4}-\d{2}-\d{2}$/.test(client.lastStageChangeDate)) {
+    return client.lastStageChangeDate
+  }
+  if (client.openedDate && /^\d{4}-\d{2}-\d{2}$/.test(client.openedDate)) {
+    return client.openedDate
+  }
+  if (client.openedMonth && /^\d{4}-\d{2}$/.test(client.openedMonth)) {
+    return `${client.openedMonth}-01`
+  }
+  const fromCreated = openedDateFromCreatedAt(client.createdAt)
+  if (fromCreated) return fromCreated
+  if (history?.length) {
+    let latest = null
+    for (const h of history) {
+      const d = formatHistoryDate(h.createdAt)
+      if (d && (!latest || d > latest)) latest = d
+    }
+    if (latest) return latest
+  }
+  return null
+}
+
+function daysSinceTouchForLead(client, history, todayStr) {
+  const touch = resolveLastTouchDate(client, history)
+  if (!touch) return null
+  return daysDiff(touch, todayStr)
 }
 
 function isLeadFinal(stage) {
@@ -47,6 +92,9 @@ function formatHistoryDate(createdAt) {
 }
 
 function collectLeadSnapshot(client, history, todayStr) {
+  const resolvedTouch = resolveLastTouchDate(client, history)
+  const daysSinceTouch = resolvedTouch ? daysDiff(resolvedTouch, todayStr) : null
+  const daysSinceMovement = daysDiff(client.lastStageChangeDate, todayStr)
   return {
     clientId: client.id,
     clientName: client.name || '',
@@ -56,9 +104,9 @@ function collectLeadSnapshot(client, history, todayStr) {
     waitStatus: client.waitStatus || null,
     nextStep: client.nextStep || null,
     nextStepDeadline: client.nextStepDeadline || null,
-    lastTouchDate: client.lastTouchDate || null,
-    daysSinceTouch: daysDiff(client.lastTouchDate, todayStr),
-    daysSinceStageChange: daysDiff(client.lastStageChangeDate, todayStr),
+    lastTouchDate: resolvedTouch,
+    daysSinceTouch,
+    daysSinceMovement,
     activeMonthsCount: client.activeMonthsCount || 1,
     assignedTo: client.assignedTo,
     assignedToName: client.assignedToName || '',
@@ -89,8 +137,8 @@ function buildPrompt(lead) {
 - Статус ожидания: ${lead.waitStatus || 'не указан'}
 - Следующий шаг: ${lead.nextStep || 'не указан'}
 - Срок следующего шага: ${lead.nextStepDeadline || 'не указан'}
-- Дней без контакта: ${lead.daysSinceTouch}
-- Дней без движения по воронке: ${lead.daysSinceStageChange}
+- Дней без контакта: ${lead.daysSinceTouch != null ? lead.daysSinceTouch : 'не указано'}
+- Дней без движения по воронке: ${lead.daysSinceMovement != null ? lead.daysSinceMovement : 'не указано'}
 - Месяц работы с лидом: ${lead.activeMonthsCount} из 3
 
 ПОСЛЕДНИЕ ДЕЙСТВИЯ:
@@ -126,8 +174,12 @@ function buildPromptFromTemplate(template, lead, maxActiveMonths) {
     .split('{waitStatus}').join(lead.waitStatus || 'не указан')
     .split('{nextStep}').join(lead.nextStep || 'не указан')
     .split('{nextStepDeadline}').join(lead.nextStepDeadline || 'не указан')
-    .split('{daysSinceTouch}').join(String(lead.daysSinceTouch))
-    .split('{daysSinceMovement}').join(String(lead.daysSinceMovement))
+    .split('{daysSinceTouch}').join(
+      lead.daysSinceTouch != null ? String(lead.daysSinceTouch) : 'не указано',
+    )
+    .split('{daysSinceMovement}').join(
+      lead.daysSinceMovement != null ? String(lead.daysSinceMovement) : 'не указано',
+    )
     .split('{activeMonthsCount}').join(String(lead.activeMonthsCount))
     .split('{maxActiveMonths}').join(String(maxActiveMonths ?? 3))
     .split('{recentHistory}').join(historyText)
@@ -161,7 +213,7 @@ async function analyzeLeadWithGroq(groq, lead, config = {}) {
     return taskText
   } catch (error) {
     console.error(`Groq error for client ${lead.clientId}:`, error)
-    return `Проверь статус по клиенту ${lead.clientName} — последний контакт был ${lead.daysSinceTouch} дней назад.`
+    return `Уточните актуальный статус по клиенту ${lead.clientName} — посмотрите этап воронки и последние действия в истории.`
   }
 }
 
@@ -178,7 +230,7 @@ function detectTaskType(taskText, lead) {
     return 'get_decision'
   }
   if (lead.activeMonthsCount >= 3) return 'close_or_drop'
-  if (lead.daysSinceTouch > 20) return 'reactivate'
+  if (lead.daysSinceTouch != null && lead.daysSinceTouch > 20) return 'reactivate'
   if (!lead.nextStep || !lead.nextStepDeadline) return 'update_next_step'
   return 'follow_up'
 }
@@ -262,9 +314,9 @@ async function runDailyAiLeadAnalysis(db, apiKey) {
       const todayStr = tashkentToday()
       if (followUp && followUp > todayStr) return false
       if (!followUp) {
-        const daysSinceTouch = daysDiff(client.lastTouchDate, todayStr)
+        const daysSinceTouch = daysSinceTouchForLead(client, [], todayStr)
         const grace = cfg.waitChaseMinDays ?? 5
-        if (daysSinceTouch < grace) return false
+        if (daysSinceTouch != null && daysSinceTouch < grace) return false
       }
     }
     return true

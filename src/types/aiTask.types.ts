@@ -47,6 +47,8 @@ export const AI_TASK_KIND_LABELS: Record<AiTaskKind, string> = {
   action: 'Действие',
 }
 
+import { resolveLastTouchDate } from '@/utils/dateUtils'
+
 /** Manager already planned work — do not generate AI tasks for this lead. */
 export function clientHasPlannedNextStep(client: {
   nextStep?: string | null
@@ -71,7 +73,14 @@ export function clientShouldSkipAiWhileWaiting(
   if (client.waitFollowUpDate) {
     return client.waitFollowUpDate > today
   }
-  if (!client.lastTouchDate) return true
+  if (!client.lastTouchDate) {
+    const resolved = resolveLastTouchDate(client)
+    if (!resolved) return true
+    const from = new Date(`${resolved}T00:00:00`)
+    const to = new Date(`${today}T00:00:00`)
+    const days = Math.round((to.getTime() - from.getTime()) / 86400000)
+    return days < graceDays
+  }
   const from = new Date(`${client.lastTouchDate}T00:00:00`)
   const to = new Date(`${today}T00:00:00`)
   const days = Math.round((to.getTime() - from.getTime()) / 86400000)

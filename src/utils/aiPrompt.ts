@@ -10,8 +10,8 @@ export interface LeadPromptSnapshot {
   waitStatus: string | null
   nextStep: string | null
   nextStepDeadline: string | null
-  daysSinceTouch: number
-  daysSinceMovement: number
+  daysSinceTouch: number | null
+  daysSinceMovement: number | null
   activeMonthsCount: number
   recentHistory: { type: string; text: string; authorName: string; date: string }[]
 }
@@ -36,8 +36,8 @@ export function buildPromptFromTemplate(
     .replaceAll('{waitStatus}', lead.waitStatus || 'не указан')
     .replaceAll('{nextStep}', lead.nextStep || 'не указан')
     .replaceAll('{nextStepDeadline}', lead.nextStepDeadline || 'не указан')
-    .replaceAll('{daysSinceTouch}', String(lead.daysSinceTouch))
-    .replaceAll('{daysSinceMovement}', String(lead.daysSinceMovement))
+    .replaceAll('{daysSinceTouch}', lead.daysSinceTouch != null ? String(lead.daysSinceTouch) : 'не указано')
+    .replaceAll('{daysSinceMovement}', lead.daysSinceMovement != null ? String(lead.daysSinceMovement) : 'не указано')
     .replaceAll('{activeMonthsCount}', String(lead.activeMonthsCount))
     .replaceAll('{maxActiveMonths}', String(config.maxActiveMonths))
     .replaceAll('{recentHistory}', historyText)
@@ -61,7 +61,7 @@ export function detectAiTaskType(
     return 'get_decision'
   }
   if (lead.activeMonthsCount >= 3) return 'close_or_drop'
-  if (lead.daysSinceTouch > 20) return 'reactivate'
+  if (lead.daysSinceTouch != null && lead.daysSinceTouch > 20) return 'reactivate'
   if (!lead.nextStep || !lead.nextStepDeadline) return 'update_next_step'
   return 'follow_up'
 }

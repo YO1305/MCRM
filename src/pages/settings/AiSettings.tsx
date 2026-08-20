@@ -24,7 +24,7 @@ import {
 } from '@/types/aiConfig.types'
 import type { Client, ClientHistoryEntry } from '@/types/client.types'
 import { buildPromptFromTemplate } from '@/utils/aiPrompt'
-import { calculateActiveMonths, daysDiff } from '@/utils/dateUtils'
+import { calculateActiveMonths, daysDiff, resolveLastTouchDate } from '@/utils/dateUtils'
 import { resolveOpenedMonth } from '@/utils/leadActivity'
 import { stageLabel } from '@/constants/clientStages'
 import { todayISO, toISODate } from '@/utils/dates'
@@ -184,7 +184,7 @@ export function AiSettings() {
         waitStatus: client.waitStatus || null,
         nextStep: client.nextStep || null,
         nextStepDeadline: client.nextStepDeadline || null,
-        daysSinceTouch: daysDiff(client.lastTouchDate, today),
+        daysSinceTouch: daysDiff(resolveLastTouchDate(client), today),
         daysSinceMovement: daysDiff(client.lastStageChangeDate, today),
         activeMonthsCount: calculateActiveMonths(resolveOpenedMonth(client)),
         recentHistory: history.map((h) => ({

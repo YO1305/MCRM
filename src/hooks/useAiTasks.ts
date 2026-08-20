@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { where } from 'firebase/firestore'
-import { subscribeToCollection, updateDocument } from '@/firebase/firestore'
+import { subscribeToCollection, updateDocument, removeDocument } from '@/firebase/firestore'
 import { useAuth } from '@/hooks/useAuth'
 import { useClients } from '@/hooks/useClients'
 import { useAiConfig } from '@/hooks/useAiConfig'
@@ -107,6 +107,10 @@ export function useAiTasks() {
     })
   }, [])
 
+  const removeTask = useCallback(async (taskId: string) => {
+    await removeDocument('ai_tasks', taskId)
+  }, [])
+
   return {
     tasks,
     pending,
@@ -114,5 +118,6 @@ export function useAiTasks() {
     loading,
     markDone,
     snooze,
+    removeTask,
   }
 }

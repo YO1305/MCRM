@@ -14,6 +14,7 @@ import { useAiConfig } from '@/hooks/useAiConfig'
 import { canSeeLeadActivity, countLeadActivity } from '@/utils/leadActivity'
 import { syncOpenedMonthsFromHistory } from '@/utils/syncOpenedMonths'
 import { clearStaleOverdueDeadlines } from '@/utils/clearStaleOverdues'
+import { backfillLastTouchDates } from '@/utils/backfillLastTouchDates'
 import { todayISO, toISODate } from '@/utils/dates'
 
 export function Dashboard() {
@@ -35,6 +36,7 @@ export function Dashboard() {
   const [aiRunning, setAiRunning] = useState(false)
   const [syncingMonths, setSyncingMonths] = useState(false)
   const [clearingOverdues, setClearingOverdues] = useState(false)
+  const [backfillingTouch, setBackfillingTouch] = useState(false)
 
   useEffect(() => {
     if (!user) return
@@ -217,6 +219,41 @@ export function Dashboard() {
                   }}
                 >
                   {clearingOverdues ? 'Чищу…' : 'Снять старые просроки'}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  disabled={backfillingTouch}
+                  onClick={() => {
+                    if (
+                      !confirm(
+                        'Проставить lastTouchDate там, где его нет, из даты открытия лида / смены этапа / создания карточки? Это исправит «999 дней» в ИИ.',
+                      )
+                    ) {
+                      return
+                    }
+                    void (async () => {
+                      setBackfillingTouch(true)
+                      try {
+                        const result = await backfillLastTouchDates(clients)
+                        alert(
+                          `Готово: обновлено ${result.updated}, пропущено ${result.skipped}, ошибок ${result.errors}`,
+                        )
+                      } catch (err) {
+                        console.error(err)
+                        alert(
+                          err instanceof Error
+                            ? err.message
+                            : 'Не удалось проставить даты касания',
+                        )
+                      } finally {
+                        setBackfillingTouch(false)
+                      }
+                    })()
+                  }}
+                >
+                  {backfillingTouch ? 'Проставляю…' : 'Даты последнего касания'}
                 </Button>
                 </>
               )}

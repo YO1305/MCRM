@@ -308,7 +308,8 @@ service cloud.firestore {
     match /ai_tasks/{taskId} {
       allow read: if isAdmin() || resource.data.assignedTo == request.auth.uid;
       allow update: if isAdmin() || resource.data.assignedTo == request.auth.uid;
-      allow create, delete: if isAdmin();
+      allow create: if isAdmin();
+      allow delete: if isAdmin() || resource.data.assignedTo == request.auth.uid;
     }
 
     match /ai_config/{docId} {

@@ -24,7 +24,7 @@ interface CrmAiTasksPanelProps {
  * Full CRM section: AI tips / reminders / actions by lead.
  */
 export function CrmAiTasksPanel({ onOpenClient }: CrmAiTasksPanelProps) {
-  const { pending, pendingCount, markDone, snooze, loading } = useAiTasks()
+  const { pending, pendingCount, markDone, snooze, removeTask, loading } = useAiTasks()
   const [kind, setKind] = useState<KindFilter>('all')
 
   const filtered = useMemo(() => {
@@ -99,6 +99,12 @@ export function CrmAiTasksPanel({ onOpenClient }: CrmAiTasksPanelProps) {
                 void snooze(id).catch((err) => {
                   console.error(err)
                   alert('Не удалось отложить задачу')
+                })
+              }}
+              onDelete={(id) => {
+                void removeTask(id).catch((err) => {
+                  console.error(err)
+                  alert('Не удалось удалить задачу')
                 })
               }}
             />

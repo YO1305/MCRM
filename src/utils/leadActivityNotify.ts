@@ -1,6 +1,6 @@
 import type { ActivityStatus, Client } from '@/types/client.types'
 import type { NotificationType } from '@/types/notification.types'
-import { calculateActiveMonths, daysDiff } from '@/utils/dateUtils'
+import { calculateActiveMonths, daysDiff, resolveLastTouchDate } from '@/utils/dateUtils'
 import { todayISO } from '@/utils/dates'
 import { buildActivityFields, isLeadFinal, resolveOpenedMonth } from '@/utils/leadActivity'
 
@@ -23,7 +23,7 @@ export function leadActivityNotices(
   if (isLeadFinal(client.stage)) return []
 
   const todayStr = todayISO()
-  const daysSinceTouch = daysDiff(client.lastTouchDate, today)
+  const daysSinceTouch = daysDiff(resolveLastTouchDate(client), today)
   const openedMonth = resolveOpenedMonth(client)
   const months = calculateActiveMonths(openedMonth)
   const link = `/crm?client=${client.id}`
@@ -48,7 +48,7 @@ export function leadActivityNotices(
     })
   }
 
-  if (daysSinceTouch === 14) {
+  if (daysSinceTouch != null && daysSinceTouch === 14) {
     add(
       client.assignedTo,
       'lead_no_touch',
@@ -58,7 +58,7 @@ export function leadActivityNotices(
     )
   }
 
-  if (daysSinceTouch === 30) {
+  if (daysSinceTouch != null && daysSinceTouch === 30) {
     for (const adminId of adminIds) {
       add(
         adminId,

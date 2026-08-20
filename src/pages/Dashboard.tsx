@@ -332,7 +332,7 @@ export function Dashboard() {
             </Button>
           </div>
           <p className="text-xs text-muted">
-            Groq смотрит историю за месяц. Порог: {groqActivityConfig?.minActiveDays ?? 10} дней.
+            Метка по числу дней в истории за месяц. Порог: {groqActivityConfig?.minActiveDays ?? 10} дней.
             Пассивных не блокируем — это только оценка.
           </p>
           {(

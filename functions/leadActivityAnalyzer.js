@@ -18,15 +18,6 @@ const STAGE_LABELS = {
   abandoned: 'Заброшено',
 }
 
-const FULL_WEIGHT = new Set([
-  'note',
-  'call',
-  'sales_note',
-  'stage_change',
-  'wait_status',
-  'next_step',
-  'visit',
-])
 const SKIP_TYPES = new Set(['created', 'system', 'auto'])
 
 const DEFAULT_ACTIVITY_PROMPT = `Ты аналитик CRM системы текстильной компании BAHMAL HOME (Узбекистан).
@@ -62,11 +53,12 @@ const DEFAULT_ACTIVITY_PROMPT = `Ты аналитик CRM системы тек
 - Клиент попросил подождать
 - Нет активности больше 14 дней подряд
 
-ВАЖНО:
-- Смотри на СОДЕРЖАНИЕ записей, не только на их количество
-- Подготовка образцов без подтверждения от клиента = малый вес
-- Статус "На паузе" без других активных действий = пассивный/паузе
-- Если записей мало но они содержательные = может быть активный
+ЖЁСТКО (важнее содержания):
+- Если дней с активностью >= минимума — label только "active"
+- Шаги, смена этапа, звонок, комментарий, назначение продаж = активность
+- "passive" только если дней меньше порога
+- "paused" только если статус ожидания явно "На паузе"
+- В reason кратко опиши, что было в истории
 
 Ответь строго в формате JSON:
 {
@@ -133,17 +125,6 @@ function isPauseText(value) {
   return String(value || '').toLowerCase().includes('на паузе')
 }
 
-function isPartialWeight(entry) {
-  if (entry.type === 'samples_sent') return true
-  const text = String(entry.text || '').toLowerCase()
-  return (
-    text.includes('образц') ||
-    text.includes('доставк') ||
-    text.includes('отправ') ||
-    text.includes('почт')
-  )
-}
-
 function calculateActiveDays(entries) {
   const byDay = new Map()
   for (const entry of entries) {
@@ -160,18 +141,38 @@ function calculateActiveDays(entries) {
       dayEntries.length > 0 &&
       dayEntries.every((e) => e.type === 'wait_status' && isPauseText(e.text))
     if (pauseOnly) continue
-    const hasFull = dayEntries.some(
-      (e) => FULL_WEIGHT.has(e.type) && !(e.type === 'wait_status' && isPauseText(e.text)),
-    )
-    if (hasFull) {
-      count += 1
-      continue
-    }
-    const hasPartial = dayEntries.some((e) => isPartialWeight(e))
-    const pausedThatDay = dayEntries.some((e) => isPauseText(e.text))
-    if (hasPartial && !pausedThatDay) count += 1
+    count += 1
   }
   return count
+}
+
+/** Day count wins over Groq content judgment. */
+function applyDayThreshold(result, activeDaysCount, minDays, waitStatus) {
+  const min = Math.max(1, Number(minDays) || DEFAULT_MIN_DAYS)
+  const groqLabel = result?.label
+  let label = 'passive'
+  if (isPauseText(waitStatus)) label = 'paused'
+  else if (activeDaysCount >= min) label = 'active'
+
+  let reason = String(result?.reason || 'Авто-оценка по количеству дней')
+  if (label !== groqLabel) {
+    const prefix =
+      label === 'paused'
+        ? 'Стоит «на паузе».'
+        : `В истории ${activeDaysCount} дн. при пороге ${min} — ${
+            label === 'active' ? 'активный' : 'пассивный'
+          }.`
+    reason = `${prefix} ${reason}`.trim()
+  }
+
+  let score = Number(result?.score)
+  if (!Number.isFinite(score)) score = 0
+  if (label === 'active') {
+    score = Math.max(score, Math.min(100, Math.round((activeDaysCount / min) * 70)))
+  } else if (label === 'passive') {
+    score = Math.min(score, 45)
+  }
+  return { label, score, reason: reason.slice(0, 280) }
 }
 
 function buildActivityPrompt(template, input) {
@@ -310,7 +311,13 @@ async function analyzeOneClient(db, groq, client, config, month, todayStr) {
     waitStatus: client.waitStatus || null,
     daysSinceLastTouch: daysDiff(resolveTouchDate(client, todayStr), todayStr),
   }
-  const result = await analyzeWithGroq(groq, input, config)
+  const groqResult = await analyzeWithGroq(groq, input, config)
+  const result = applyDayThreshold(
+    groqResult,
+    activeDaysCount,
+    config.minActiveDays,
+    client.waitStatus,
+  )
   await db.collection('clients').doc(client.id).update({
     activityScore: result.score,
     activityLabel: result.label,
@@ -386,13 +393,22 @@ async function runActivityAnalysis(db, apiKey, options = {}) {
       console.error(`Activity analysis error for ${client.id}:`, error)
       lastError = error?.message || String(error)
       try {
+        const failDays = calculateActiveDays(
+          await loadMonthHistory(db, client.id, month).catch(() => []),
+        )
+        const failed = applyDayThreshold(
+          { label: 'passive', score: 0, reason: 'Авто-оценка: сбой анализа' },
+          failDays,
+          config.minActiveDays,
+          client.waitStatus,
+        )
         await db.collection('clients').doc(client.id).update({
-          activityScore: 0,
-          activityLabel: 'passive',
+          activityScore: failed.score,
+          activityLabel: failed.label,
           activityMonth: month,
           activityAnalyzedAt: FieldValue.serverTimestamp(),
-          activityReason: 'Авто-оценка: сбой анализа',
-          activeDaysThisMonth: 0,
+          activityReason: failed.reason,
+          activeDaysThisMonth: failDays,
           updatedAt: FieldValue.serverTimestamp(),
         })
         processed += 1
@@ -417,7 +433,12 @@ async function runActivityAnalysis(db, apiKey, options = {}) {
 async function testClientActivity(db, apiKey, clientId, configOverride) {
   const groqClient = new Groq({ apiKey: String(apiKey || '') })
   const preview = await buildTestPreview(db, clientId, configOverride)
-  const result = await analyzeWithGroq(groqClient, preview.input, preview.config)
+  const result = applyDayThreshold(
+    await analyzeWithGroq(groqClient, preview.input, preview.config),
+    preview.input.activeDaysCount,
+    preview.config.minActiveDays,
+    preview.input.waitStatus,
+  )
   return {
     label: result.label,
     score: result.score,
@@ -468,4 +489,5 @@ module.exports = {
   loadConfig,
   DEFAULT_ACTIVITY_PROMPT,
   calculateActiveDays,
+  applyDayThreshold,
 }

@@ -98,6 +98,24 @@ function daysSinceTouchForLead(client, history, todayStr) {
   return daysDiff(touch, todayStr)
 }
 
+function isRecurringTasksPaused(user, dateISO) {
+  const until = user?.recurringTasksPausedUntil
+  if (!until) return false
+  const from = user?.recurringTasksPausedFrom || until
+  return dateISO >= from && dateISO <= until
+}
+
+async function loadPausedManagerIds(db, todayStr) {
+  const snap = await db.collection('users').get()
+  const paused = new Set()
+  for (const docSnap of snap.docs) {
+    if (isRecurringTasksPaused(docSnap.data(), todayStr)) {
+      paused.add(docSnap.id)
+    }
+  }
+  return paused
+}
+
 function formatHistoryDate(createdAt) {
   if (!createdAt) return tashkentToday()
   if (typeof createdAt.toDate === 'function') {
@@ -384,6 +402,7 @@ async function runAnalysis() {
   }
 
   const enabledSet = new Set(config.enabledForManagers || [])
+  const pausedManagers = await loadPausedManagerIds(db, todayStr)
   const clientsSnap = await db.collection('clients').get()
   const candidates = []
 
@@ -392,6 +411,7 @@ async function runAnalysis() {
     if (FINAL_STAGES.has(client.stage)) continue
     if (client.activityStatus === 'frozen') continue
     if (!client.assignedTo) continue
+    if (pausedManagers.has(client.assignedTo)) continue
     if (enabledSet.size && !enabledSet.has(client.assignedTo)) continue
     // Manager already planned next step — do not invent another AI task
     if (hasPlannedNextStep(client)) continue

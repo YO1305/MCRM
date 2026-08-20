@@ -3,14 +3,16 @@ import { where } from 'firebase/firestore'
 import { subscribeToCollection, updateDocument, removeDocument } from '@/firebase/firestore'
 import { useAuth } from '@/hooks/useAuth'
 import { useClients } from '@/hooks/useClients'
+import { useUsers } from '@/hooks/useUsers'
 import { useAiConfig } from '@/hooks/useAiConfig'
 import type { AiTask } from '@/types/aiTask.types'
 import {
   clientHasPlannedNextStep,
   clientShouldSkipAiWhileWaiting,
 } from '@/types/aiTask.types'
-import { dismissPendingAiTasksForClient } from '@/utils/aiTasks'
+import { dismissPendingAiTasksForClient, dismissPendingAiTasksForManager } from '@/utils/aiTasks'
 import { addDaysISO, todayISO } from '@/utils/dates'
+import { isRecurringTasksPaused } from '@/utils/taskTemplates'
 
 function sortAiTasks(data: AiTask[]) {
   return [...data].sort((a, b) => {
@@ -23,6 +25,7 @@ function sortAiTasks(data: AiTask[]) {
 export function useAiTasks() {
   const { user, isAdmin } = useAuth()
   const { clients } = useClients()
+  const { users } = useUsers(!!user)
   const { config } = useAiConfig()
   const [tasks, setTasks] = useState<AiTask[]>([])
   const [loading, setLoading] = useState(true)
@@ -50,6 +53,14 @@ export function useAiTasks() {
     )
   }, [user, isAdmin])
 
+  const vacationManagerIds = useMemo(() => {
+    const set = new Set<string>()
+    for (const u of users) {
+      if (isRecurringTasksPaused(u, today)) set.add(u.id)
+    }
+    return set
+  }, [users, today])
+
   const hiddenClientIds = useMemo(() => {
     const set = new Set<string>()
     for (const c of clients) {
@@ -59,13 +70,16 @@ export function useAiTasks() {
     return set
   }, [clients, today, graceDays])
 
-  /** Pending AI tasks, excluding clients with planned next step / waiting grace. */
+  /** Pending AI tasks, excluding planned next step / waiting grace / manager on vacation. */
   const pending = useMemo(
     () =>
       tasks.filter(
-        (t) => t.status === 'pending' && !hiddenClientIds.has(t.clientId),
+        (t) =>
+          t.status === 'pending' &&
+          !hiddenClientIds.has(t.clientId) &&
+          !vacationManagerIds.has(t.assignedTo),
       ),
-    [tasks, hiddenClientIds],
+    [tasks, hiddenClientIds, vacationManagerIds],
   )
 
   const pendingCount = pending.length
@@ -91,6 +105,24 @@ export function useAiTasks() {
       }
     })()
   }, [user, loading, clients.length, tasks, hiddenClientIds])
+
+  // Auto-close AI tasks while manager is on vacation (same pause as daily tasks)
+  useEffect(() => {
+    if (!user || loading || !vacationManagerIds.size) return
+    const managerIds = [...vacationManagerIds].filter((id) =>
+      tasks.some((t) => t.status === 'pending' && t.assignedTo === id),
+    )
+    if (!managerIds.length) return
+    void (async () => {
+      for (const managerId of managerIds) {
+        try {
+          await dismissPendingAiTasksForManager(managerId)
+        } catch (err) {
+          console.error('dismiss ai tasks for vacation failed', managerId, err)
+        }
+      }
+    })()
+  }, [user, loading, tasks, vacationManagerIds])
 
   const markDone = useCallback(async (taskId: string) => {
     await updateDocument('ai_tasks', taskId, {

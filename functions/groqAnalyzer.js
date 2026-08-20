@@ -74,6 +74,24 @@ function daysSinceTouchForLead(client, history, todayStr) {
   return daysDiff(touch, todayStr)
 }
 
+function isRecurringTasksPaused(user, dateISO) {
+  const until = user?.recurringTasksPausedUntil
+  if (!until) return false
+  const from = user?.recurringTasksPausedFrom || until
+  return dateISO >= from && dateISO <= until
+}
+
+async function loadPausedManagerIds(db, todayStr) {
+  const snap = await db.collection('users').get()
+  const paused = new Set()
+  for (const docSnap of snap.docs) {
+    if (isRecurringTasksPaused(docSnap.data(), todayStr)) {
+      paused.add(docSnap.id)
+    }
+  }
+  return paused
+}
+
 function isLeadFinal(stage) {
   return FINAL_STAGES.has(stage)
 }
@@ -300,12 +318,14 @@ async function runDailyAiLeadAnalysis(db, apiKey) {
   const temperature = cfg.temperature ?? 0.4
   const maxTokens = cfg.maxTokens ?? 150
 
+  const pausedManagers = await loadPausedManagerIds(db, todayStr)
   const clientsSnap = await db.collection('clients').get()
   const activeDocs = clientsSnap.docs.filter((docSnap) => {
     const client = docSnap.data() || {}
     if (isLeadFinal(client.stage)) return false
     if (client.activityStatus === 'frozen') return false
     if (!client.assignedTo) return false
+    if (pausedManagers.has(client.assignedTo)) return false
     if (enabledSet.size && !enabledSet.has(client.assignedTo)) return false
     if (String(client.nextStep || '').trim()) return false
     const waitStatus = String(client.waitStatus || '').trim()

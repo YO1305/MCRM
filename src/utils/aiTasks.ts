@@ -21,3 +21,23 @@ export async function dismissPendingAiTasksForClient(clientId: string): Promise<
   }
   return n
 }
+
+/** Close open AI tasks for a manager on vacation / task pause. */
+export async function dismissPendingAiTasksForManager(managerId: string): Promise<number> {
+  const q = query(
+    collection(db, 'ai_tasks'),
+    where('assignedTo', '==', managerId),
+    where('status', '==', 'pending'),
+  )
+  const snap = await getDocs(q)
+  let n = 0
+  for (const docSnap of snap.docs) {
+    await updateDocument('ai_tasks', docSnap.id, {
+      status: 'done',
+      doneAt: new Date().toISOString(),
+      dismissReason: 'manager_on_vacation',
+    })
+    n += 1
+  }
+  return n
+}

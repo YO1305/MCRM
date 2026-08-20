@@ -332,8 +332,8 @@ export function Dashboard() {
             </Button>
           </div>
           <p className="text-xs text-muted">
-            Метка по числу дней в истории за месяц. Порог: {groqActivityConfig?.minActiveDays ?? 10} дней.
-            Пассивных не блокируем — это только оценка.
+            Как в карточке: есть работа в «Истории» за месяц — активный. Порог дней только
+            для шкалы ({groqActivityConfig?.minActiveDays ?? 10} дн.).
           </p>
           {(
             [

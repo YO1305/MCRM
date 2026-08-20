@@ -4,7 +4,7 @@ import admin from 'firebase-admin'
 const require = createRequire(import.meta.url)
 const { runActivityAnalysis, testClientActivity } = require('../functions/leadActivityAnalyzer.js')
 
-const MAX_LEADS_PER_RUN = 10
+const MAX_LEADS_PER_RUN = 30
 
 function initAdmin() {
   if (admin.apps.length) return admin.app()

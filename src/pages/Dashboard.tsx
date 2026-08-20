@@ -310,12 +310,14 @@ export function Dashboard() {
                 void (async () => {
                   setActivityRunning(true)
                   try {
-                    const result = await runActivityAnalysisNow({ force: true })
+                    const result = await runActivityAnalysisNow()
                     alert(
                       `Анализ: обработано ${result.processed || 0}` +
                         (result.remaining
                           ? `, осталось ${result.remaining} — нажмите ещё раз`
-                          : ''),
+                          : '') +
+                        (result.errors ? `, ошибок ${result.errors}` : '') +
+                        (result.lastError ? `. ${result.lastError}` : ''),
                     )
                   } catch (err) {
                     console.error(err)

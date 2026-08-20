@@ -125,14 +125,6 @@ function resolveTouchDate(client, todayStr) {
   return resolveOpenedDate(client, todayStr)
 }
 
-function monthRange(month) {
-  const [y, m] = String(month).split('-').map(Number)
-  const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate()
-  const start = new Date(`${month}-01T00:00:00+05:00`)
-  const end = new Date(`${month}-${String(lastDay).padStart(2, '0')}T23:59:59.999+05:00`)
-  return { start, end }
-}
-
 function formatHistoryDate(createdAt) {
   return dateFromCreatedAt(createdAt, tashkentToday())
 }
@@ -227,7 +219,7 @@ function parseActivityResult(raw, fallbackDays, minDays) {
 }
 
 async function loadConfig(db) {
-  const snap = await db.doc('ai_activity_config/settings').get()
+  const snap = await db.doc('ai_config/activity_settings').get()
   const data = snap.exists ? snap.data() || {} : {}
   return {
     minActiveDays: Math.max(1, Number(data.minActiveDays) || DEFAULT_MIN_DAYS),
@@ -237,23 +229,30 @@ async function loadConfig(db) {
 }
 
 async function loadMonthHistory(db, clientId, month) {
-  const { start, end } = monthRange(month)
-  const snap = await db
-    .collection('client_history')
-    .where('clientId', '==', clientId)
-    .where('createdAt', '>=', start)
-    .where('createdAt', '<=', end)
-    .orderBy('createdAt', 'asc')
-    .get()
-  return snap.docs.map((d) => {
-    const data = d.data() || {}
-    return {
-      date: formatHistoryDate(data.createdAt),
-      type: data.type || '',
-      authorName: data.authorName || '',
-      text: data.text || '',
-    }
-  })
+  let snap
+  try {
+    snap = await db
+      .collection('client_history')
+      .where('clientId', '==', clientId)
+      .orderBy('createdAt', 'desc')
+      .limit(250)
+      .get()
+  } catch (err) {
+    console.error('history ordered query failed, fallback', clientId, err)
+    snap = await db.collection('client_history').where('clientId', '==', clientId).limit(250).get()
+  }
+
+  return snap.docs
+    .map((d) => {
+      const data = d.data() || {}
+      return {
+        date: formatHistoryDate(data.createdAt),
+        type: data.type || '',
+        authorName: data.authorName || '',
+        text: data.text || '',
+      }
+    })
+    .filter((h) => typeof h.date === 'string' && h.date.startsWith(month))
 }
 
 async function analyzeWithGroq(groq, input, config) {
@@ -293,7 +292,12 @@ function alreadyAnalyzedToday(client, todayStr, month) {
 }
 
 async function analyzeOneClient(db, groq, client, config, month, todayStr) {
-  const history = await loadMonthHistory(db, client.id, month)
+  let history = []
+  try {
+    history = await loadMonthHistory(db, client.id, month)
+  } catch (err) {
+    console.error(`history load failed for ${client.id}:`, err)
+  }
   const activeDaysCount = calculateActiveDays(history)
   const input = {
     clientId: client.id,
@@ -333,6 +337,7 @@ async function runActivityAnalysis(db, apiKey, options = {}) {
   const month = tashkentMonth()
   const todayStr = tashkentToday()
   const maxClients = Number(options.maxClients) || 40
+  const deadline = Date.now() + (Number(options.timeBudgetMs) || 50000)
 
   if (options.clientId) {
     const snap = await db.collection('clients').doc(options.clientId).get()
@@ -370,14 +375,31 @@ async function runActivityAnalysis(db, apiKey, options = {}) {
   const batch = candidates.slice(0, maxClients)
   let processed = 0
   let errors = 0
+  let lastError = ''
   for (const client of batch) {
+    if (Date.now() > deadline) break
     try {
       await analyzeOneClient(db, groqClient, client, config, month, todayStr)
       processed += 1
       await new Promise((resolve) => setTimeout(resolve, REQUEST_DELAY_MS))
     } catch (error) {
-      errors += 1
       console.error(`Activity analysis error for ${client.id}:`, error)
+      lastError = error?.message || String(error)
+      try {
+        await db.collection('clients').doc(client.id).update({
+          activityScore: 0,
+          activityLabel: 'passive',
+          activityMonth: month,
+          activityAnalyzedAt: FieldValue.serverTimestamp(),
+          activityReason: 'Авто-оценка: сбой анализа',
+          activeDaysThisMonth: 0,
+          updatedAt: FieldValue.serverTimestamp(),
+        })
+        processed += 1
+      } catch (writeErr) {
+        errors += 1
+        lastError = writeErr?.message || lastError
+      }
     }
   }
 
@@ -386,8 +408,9 @@ async function runActivityAnalysis(db, apiKey, options = {}) {
     month,
     candidates: candidates.length,
     processed,
-    remaining: Math.max(0, candidates.length - batch.length),
+    remaining: Math.max(0, candidates.length - processed),
     errors,
+    lastError: lastError || undefined,
   }
 }
 

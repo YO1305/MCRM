@@ -8,8 +8,8 @@ export interface AiActivityConfig {
   updatedBy?: string | null
 }
 
-export const AI_ACTIVITY_COLLECTION = 'ai_activity_config'
-export const AI_ACTIVITY_DOC_ID = 'settings'
+export const AI_ACTIVITY_COLLECTION = 'ai_config'
+export const AI_ACTIVITY_DOC_ID = 'activity_settings'
 
 export const DEFAULT_ACTIVITY_PROMPT = `Ты аналитик CRM системы текстильной компании BAHMAL HOME (Узбекистан).
 

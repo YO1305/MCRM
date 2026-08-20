@@ -193,6 +193,7 @@ export interface GroqActivityAnalysisResult {
   processed?: number
   remaining?: number
   errors?: number
+  lastError?: string
   skippedAll?: boolean
   reason?: string
   result?: {

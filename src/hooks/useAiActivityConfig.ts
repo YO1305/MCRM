@@ -39,7 +39,7 @@ export function useAiActivityConfig() {
               updatedBy: 'system',
             })
           } catch (err) {
-            console.error('init ai_activity_config failed', err)
+            console.error('init ai_config/activity_settings failed', err)
             setConfig(normalizeConfig(undefined))
             setLoading(false)
           }

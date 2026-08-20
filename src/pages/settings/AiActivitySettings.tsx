@@ -88,10 +88,12 @@ export function AiActivitySettings() {
     setRunning(true)
     setMsg('')
     try {
-      const result = await runActivityAnalysisNow({ force: true })
+      const result = await runActivityAnalysisNow()
       setMsg(
         `Анализ: обработано ${result.processed || 0}` +
-          (result.remaining ? `, осталось ${result.remaining} — нажмите ещё раз` : ''),
+          (result.remaining ? `, осталось ${result.remaining} — нажмите ещё раз` : '') +
+          (result.errors ? `, ошибок ${result.errors}` : '') +
+          (result.lastError ? `. ${result.lastError}` : ''),
       )
     } catch (err) {
       setMsg(err instanceof Error ? err.message : 'Не удалось запустить анализ')

@@ -35,11 +35,9 @@ import { CountrySelect } from '@/components/crm/CountrySelect'
 import { WAIT_STATUS_PRESETS } from '@/constants/waitStatus'
 import { formatISODateShort, todayISO, addDaysISO, getCurrentMonth } from '@/utils/dates'
 import { clientStepOverdue, visitPrepareDate } from '@/utils/clientWork'
-import { ActivityBadge } from '@/components/crm/ActivityBadge'
 import { GroqActivityBadge } from '@/components/crm/GroqActivityBadge'
 import { ActiveDaysMeter } from '@/components/crm/ActiveDaysMeter'
-import { calculateActiveMonths, resolveOpenedDateFromClient } from '@/utils/dateUtils'
-import { canSeeLeadActivity, resolveActivityStatus, resolveOpenedMonth } from '@/utils/leadActivity'
+import { resolveOpenedDateFromClient } from '@/utils/dateUtils'
 import { useAiActivityConfig } from '@/hooks/useAiActivityConfig'
 import { groqActivityIsCurrent } from '@/utils/groqLeadActivity'
 
@@ -544,12 +542,6 @@ export function ClientDetail({
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4 sm:px-6">
           <div className="flex flex-wrap gap-2">
             <Badge variant={stageBadge(stage)}>{stageLabel(stage)}</Badge>
-            {(isAdmin || canSeeLeadActivity(user)) && (
-              <ActivityBadge
-                status={resolveActivityStatus(client)}
-                months={calculateActiveMonths(resolveOpenedMonth(client))}
-              />
-            )}
             {isAdmin && (
               <GroqActivityBadge
                 label={client.activityLabel}
@@ -1161,7 +1153,7 @@ export function ClientDetail({
                   />
                   <p className="mt-1 text-xs text-muted">
                     Выберите в календаре день, когда реально начали общение с клиентом (не когда
-                    занесли в CRM). От этой даты считаются статусы «Новый / Активный / Заморожен».
+                    занесли в CRM).
                   </p>
                 </div>
                 <Textarea

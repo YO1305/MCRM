@@ -41,7 +41,8 @@ export function useCatalogueContacts() {
 
   const saveContacts = useCallback(async (next: CataloguePublicContacts) => {
     const payload = normalize(next)
-    await setDocument(CATALOGUE_SETTINGS_COLLECTION, CATALOGUE_CONTACTS_DOC, payload)
+    const data: Record<string, unknown> = { ...payload }
+    await setDocument(CATALOGUE_SETTINGS_COLLECTION, CATALOGUE_CONTACTS_DOC, data)
     setContacts(payload)
   }, [])
 

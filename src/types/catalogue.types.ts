@@ -57,6 +57,34 @@ export interface CatalogueInput {
   clientName?: string
   pdf: File
   excel?: File | null
+  priceData?: PriceRow[] | null
 }
 
-export const BAHMAL_PUBLIC_PHONE = '+998 62 224-44-44'
+export const CATALOGUE_MAX_FILE_BYTES = 80 * 1024 * 1024
+
+export const CATALOGUE_SETTINGS_COLLECTION = 'catalogue_settings'
+export const CATALOGUE_CONTACTS_DOC = 'contacts'
+
+export interface CataloguePublicContacts {
+  companyName: string
+  phone: string
+  whatsapp: string
+  telegram: string
+  instagram: string
+  email: string
+  website: string
+  address: string
+}
+
+export const DEFAULT_CATALOGUE_CONTACTS: CataloguePublicContacts = {
+  companyName: 'Bahmal Home',
+  phone: '+998 62 224-44-44',
+  whatsapp: '',
+  telegram: '',
+  instagram: '',
+  email: '',
+  website: 'https://bahmal.uz',
+  address: '',
+}
+
+export const BAHMAL_PUBLIC_PHONE = DEFAULT_CATALOGUE_CONTACTS.phone

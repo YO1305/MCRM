@@ -7,6 +7,7 @@ import { useClients } from '@/hooks/useClients'
 import { useCatalogues } from '@/hooks/useCatalogues'
 import { CatalogueCard } from '@/components/catalogue/CatalogueCard'
 import { CreateCatalogueModal } from '@/components/catalogue/CreateCatalogueModal'
+import { CatalogueContactsCard } from '@/components/catalogue/CatalogueContactsCard'
 import {
   canCreateGeneralCatalogue,
   canCreatePersonalKp,
@@ -61,6 +62,8 @@ export function Catalogue() {
           Постоянная ссылка для клиента. Обновили Excel — цены на той же странице уже новые.
         </p>
       </div>
+
+      <CatalogueContactsCard />
 
       <div className="flex flex-wrap gap-2">
         <Button

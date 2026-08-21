@@ -3,9 +3,10 @@ import { useParams } from 'react-router-dom'
 import { where } from 'firebase/firestore'
 import { queryCollection } from '@/firebase/firestore'
 import { incrementCatalogueView } from '@/hooks/useCatalogues'
+import { useCatalogueContacts } from '@/hooks/useCatalogueContacts'
 import { PdfViewer } from '@/components/catalogue/PdfViewer'
 import { PriceTable } from '@/components/catalogue/PriceTable'
-import { BAHMAL_PUBLIC_PHONE, type Catalogue } from '@/types/catalogue.types'
+import { DEFAULT_CATALOGUE_CONTACTS, type Catalogue } from '@/types/catalogue.types'
 
 function formatUpdated(value: unknown): string {
   if (!value) return ''
@@ -30,6 +31,8 @@ function formatUpdated(value: unknown): string {
 export function PublicCatalogue() {
   const { slug } = useParams()
   const [item, setItem] = useState<Catalogue | null | undefined>(undefined)
+  const { contacts } = useCatalogueContacts()
+  const phone = contacts.phone || DEFAULT_CATALOGUE_CONTACTS.phone
 
   useEffect(() => {
     let cancelled = false
@@ -78,7 +81,7 @@ export function PublicCatalogue() {
       <div className="flex min-h-screen flex-col items-center justify-center bg-white px-6 text-center">
         <p className="text-lg font-semibold text-gray-900">Эта ссылка деактивирована</p>
         <p className="mt-2 text-sm text-gray-500">По вопросам свяжитесь с нами:</p>
-        <p className="mt-1 font-medium text-gray-800">{BAHMAL_PUBLIC_PHONE}</p>
+        <p className="mt-1 font-medium text-gray-800">{phone}</p>
       </div>
     )
   }
@@ -88,7 +91,9 @@ export function PublicCatalogue() {
   return (
     <div className="min-h-screen bg-[#faf8f5] text-gray-900">
       <header className="border-b border-gray-200 bg-white px-4 py-8 text-center">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">Bahmal Home</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">
+          {contacts.companyName || 'Bahmal Home'}
+        </p>
         <h1 className="mt-2 text-2xl font-bold">{item.title}</h1>
         <p className="mt-1 text-sm text-gray-500">
           {item.type === 'personal' ? 'Коммерческое предложение' : 'Каталог'}
@@ -103,9 +108,15 @@ export function PublicCatalogue() {
           <PriceTable rows={item.priceData} />
         </section>
 
-        <footer className="pb-10 text-center text-sm text-gray-500">
+        <footer className="space-y-1 pb-10 text-center text-sm text-gray-500">
           {updated && <p>Обновлено: {updated}</p>}
-          <p className="mt-1">По вопросам: {BAHMAL_PUBLIC_PHONE}</p>
+          <p className="font-medium text-gray-800">По вопросам: {phone}</p>
+          {contacts.whatsapp && <p>WhatsApp: {contacts.whatsapp}</p>}
+          {contacts.telegram && <p>Telegram: {contacts.telegram}</p>}
+          {contacts.instagram && <p>Instagram: {contacts.instagram}</p>}
+          {contacts.email && <p>{contacts.email}</p>}
+          {contacts.website && <p>{contacts.website}</p>}
+          {contacts.address && <p>{contacts.address}</p>}
         </footer>
       </main>
     </div>

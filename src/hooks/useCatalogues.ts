@@ -11,7 +11,19 @@ import { uploadFile } from '@/firebase/storage'
 import { useAuth } from '@/hooks/useAuth'
 import { parseExcelPrices } from '@/utils/excelParser'
 import { cataloguePublicUrl, generateSlug } from '@/utils/slugUtils'
-import type { Catalogue, CatalogueInput } from '@/types/catalogue.types'
+import { CATALOGUE_MAX_FILE_BYTES, type Catalogue, type CatalogueInput } from '@/types/catalogue.types'
+
+export type CatalogueUploadProgress = {
+  label: string
+  percent: number
+}
+
+function assertFileSize(file: File, label: string) {
+  if (file.size > CATALOGUE_MAX_FILE_BYTES) {
+    const mb = Math.round(file.size / (1024 * 1024))
+    throw new Error(`${label} слишком большой (${mb} МБ). Максимум 80 МБ.`)
+  }
+}
 
 export function useCatalogues(type?: 'general' | 'personal', clientId?: string) {
   const { user } = useAuth()
@@ -45,7 +57,10 @@ export function useCatalogues(type?: 'general' | 'personal', clientId?: string) 
   }, [catalogues, type, clientId])
 
   const createCatalogue = useCallback(
-    async (input: CatalogueInput): Promise<string> => {
+    async (
+      input: CatalogueInput,
+      onProgress?: (progress: CatalogueUploadProgress) => void,
+    ): Promise<string> => {
       if (!user) throw new Error('Нужно войти')
       const title = input.title.trim()
       if (!title) throw new Error('Укажите название')
@@ -53,24 +68,36 @@ export function useCatalogues(type?: 'general' | 'personal', clientId?: string) 
       if (input.type === 'personal' && !input.clientId) {
         throw new Error('Выберите клиента для персонального КП')
       }
+      assertFileSize(input.pdf, 'PDF')
+      if (input.excel) assertFileSize(input.excel, 'Excel')
 
       const id = crypto.randomUUID()
       const slug = generateSlug(input.type === 'personal' ? `kp-${title}` : title)
       const publicUrl = cataloguePublicUrl(slug)
-      const pdfUrl = await uploadFile(`catalogues/${id}/catalogue.pdf`, input.pdf)
+
+      onProgress?.({ label: 'Загрузка PDF', percent: 0 })
+      const pdfUrl = await uploadFile(`catalogues/${id}/catalogue.pdf`, input.pdf, (percent) => {
+        onProgress?.({ label: 'Загрузка PDF', percent })
+      })
 
       let excelUrl: string | null = null
       let excelFileName: string | null = null
-      let priceData: Catalogue['priceData'] = null
+      let priceData: Catalogue['priceData'] = input.priceData ?? null
       if (input.excel) {
         excelFileName = input.excel.name
+        onProgress?.({ label: 'Загрузка Excel', percent: 0 })
         excelUrl = await uploadFile(
           `catalogues/${id}/prices_${Date.now()}.xlsx`,
           input.excel,
+          (percent) => onProgress?.({ label: 'Загрузка Excel', percent }),
         )
-        priceData = await parseExcelPrices(input.excel)
+        if (!priceData) {
+          onProgress?.({ label: 'Разбор прайса', percent: 50 })
+          priceData = await parseExcelPrices(input.excel)
+        }
       }
 
+      onProgress?.({ label: 'Сохранение в Firebase', percent: 90 })
       await setDocument('catalogues', id, {
         type: input.type,
         title,
@@ -94,6 +121,7 @@ export function useCatalogues(type?: 'general' | 'personal', clientId?: string) 
         createdBy: user.id,
         createdByName: user.name,
       })
+      onProgress?.({ label: 'Готово', percent: 100 })
       return publicUrl
     },
     [user],
@@ -102,6 +130,7 @@ export function useCatalogues(type?: 'general' | 'personal', clientId?: string) 
   const updateExcel = useCallback(
     async (id: string, file: File) => {
       if (!user) throw new Error('Нужно войти')
+      assertFileSize(file, 'Excel')
       const excelUrl = await uploadFile(`catalogues/${id}/prices_${Date.now()}.xlsx`, file)
       const priceData = await parseExcelPrices(file)
       await updateDocument('catalogues', id, {

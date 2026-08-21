@@ -177,6 +177,13 @@ service cloud.firestore {
       allow delete: if isAdmin() || hasPosition('head');
     }
 
+    // Public landing contacts. Edit in CRM «Каталог и КП» or in Firebase Console:
+    // collection catalogue_settings / document contacts
+    match /catalogue_settings/{docId} {
+      allow read: if true;
+      allow write: if canWriteCatalogue();
+    }
+
     match /deletion_requests/{requestId} {
       allow read: if isAdmin() || resource.data.requestedBy == request.auth.uid;
       allow create: if isSignedIn()

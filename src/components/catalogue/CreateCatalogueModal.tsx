@@ -2,10 +2,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Textarea } from '@/components/ui/Textarea'
-import type { CatalogueCategory, CatalogueInput, CatalogueType } from '@/types/catalogue.types'
-import { CATALOGUE_CATEGORY_LABELS } from '@/types/catalogue.types'
+import type { CatalogueCategory, CatalogueInput, CatalogueType, PriceRow } from '@/types/catalogue.types'
+import { CATALOGUE_CATEGORY_LABELS, CATALOGUE_MAX_FILE_BYTES } from '@/types/catalogue.types'
 import { parseExcelPrices } from '@/utils/excelParser'
 import type { Client } from '@/types/client.types'
+import type { CatalogueUploadProgress } from '@/hooks/useCatalogues'
 
 interface CreateCatalogueModalProps {
   open: boolean
@@ -15,7 +16,10 @@ interface CreateCatalogueModalProps {
   clients: Client[]
   allowGeneral: boolean
   allowPersonal: boolean
-  onCreate: (input: CatalogueInput) => Promise<string>
+  onCreate: (
+    input: CatalogueInput,
+    onProgress?: (progress: CatalogueUploadProgress) => void,
+  ) => Promise<string>
 }
 
 export function CreateCatalogueModal({
@@ -39,7 +43,9 @@ export function CreateCatalogueModal({
   const [pdf, setPdf] = useState<File | null>(null)
   const [excel, setExcel] = useState<File | null>(null)
   const [parsed, setParsed] = useState<number | null>(null)
+  const [priceRows, setPriceRows] = useState<PriceRow[] | null>(null)
   const [busy, setBusy] = useState(false)
+  const [progress, setProgress] = useState<CatalogueUploadProgress | null>(null)
   const [error, setError] = useState('')
   const [createdUrl, setCreatedUrl] = useState('')
 
@@ -53,6 +59,8 @@ export function CreateCatalogueModal({
     setPdf(null)
     setExcel(null)
     setParsed(null)
+    setPriceRows(null)
+    setProgress(null)
     setError('')
     setCreatedUrl('')
   }, [open, defaultType, presetClient, allowGeneral])
@@ -72,12 +80,26 @@ export function CreateCatalogueModal({
 
   const selectedClient = clients.find((c) => c.id === clientId) || presetClient
 
+  function tooBig(file: File, label: string): string | null {
+    if (file.size <= CATALOGUE_MAX_FILE_BYTES) return null
+    const mb = Math.round(file.size / (1024 * 1024))
+    return `${label} слишком большой (${mb} МБ). Максимум 80 МБ.`
+  }
+
   async function handleExcel(file: File | null) {
     setExcel(file)
     setParsed(null)
+    setPriceRows(null)
     if (!file) return
+    const sizeError = tooBig(file, 'Excel')
+    if (sizeError) {
+      setError(sizeError)
+      setExcel(null)
+      return
+    }
     try {
       const rows = await parseExcelPrices(file)
+      setPriceRows(rows)
       setParsed(rows.length)
     } catch {
       setParsed(null)
@@ -91,23 +113,34 @@ export function CreateCatalogueModal({
       setError('Загрузите PDF')
       return
     }
+    const pdfError = tooBig(pdf, 'PDF')
+    if (pdfError) {
+      setError(pdfError)
+      return
+    }
     setBusy(true)
+    setProgress({ label: 'Подготовка', percent: 0 })
     try {
-      const url = await onCreate({
-        type,
-        title,
-        category,
-        description,
-        clientId: type === 'personal' ? selectedClient?.id : undefined,
-        clientName: type === 'personal' ? selectedClient?.name : undefined,
-        pdf,
-        excel,
-      })
+      const url = await onCreate(
+        {
+          type,
+          title,
+          category,
+          description,
+          clientId: type === 'personal' ? selectedClient?.id : undefined,
+          clientName: type === 'personal' ? selectedClient?.name : undefined,
+          pdf,
+          excel,
+          priceData: priceRows,
+        },
+        (next) => setProgress(next),
+      )
       setCreatedUrl(url)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Не удалось создать')
     } finally {
       setBusy(false)
+      setProgress(null)
     }
   }
 
@@ -234,7 +267,18 @@ export function CreateCatalogueModal({
                 type="file"
                 accept="application/pdf"
                 className="mt-1 block w-full text-sm"
-                onChange={(e) => setPdf(e.target.files?.[0] || null)}
+                onChange={(e) => {
+                  const file = e.target.files?.[0] || null
+                  if (file) {
+                    const sizeError = tooBig(file, 'PDF')
+                    if (sizeError) {
+                      setError(sizeError)
+                      setPdf(null)
+                      return
+                    }
+                  }
+                  setPdf(file)
+                }}
               />
               {pdf && <p className="mt-1 text-xs text-emerald-700">{pdf.name} ✓</p>}
             </label>
@@ -255,6 +299,21 @@ export function CreateCatalogueModal({
               )}
             </label>
 
+            {progress && (
+              <div>
+                <p className="text-sm text-muted">
+                  {progress.label}
+                  {progress.percent > 0 ? ` · ${progress.percent}%` : ''}
+                </p>
+                <div className="mt-1 h-2 overflow-hidden rounded-full bg-background">
+                  <div
+                    className="h-full bg-secondary transition-all"
+                    style={{ width: `${Math.max(progress.percent, 4)}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
             {error && <p className="text-sm text-danger">{error}</p>}
 
             <div className="flex flex-wrap gap-2">
@@ -263,7 +322,7 @@ export function CreateCatalogueModal({
                 disabled={busy || !title.trim() || !pdf}
                 onClick={() => void submit()}
               >
-                {busy ? 'Создание…' : 'Создать и получить ссылку'}
+                {busy ? progress?.label || 'Создание…' : 'Создать и получить ссылку'}
               </Button>
               <Button type="button" variant="ghost" onClick={onClose}>
                 Отмена

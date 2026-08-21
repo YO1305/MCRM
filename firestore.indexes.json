@@ -39,7 +39,7 @@
         { "fieldPath": "clientId", "order": "ASCENDING" },
         { "fieldPath": "month", "order": "ASCENDING" }
       ]
-    }
+    },
     {
       "collectionGroup": "ai_tasks",
       "queryScope": "COLLECTION",

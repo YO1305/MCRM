@@ -8,6 +8,7 @@ import { useKpiPayroll } from '@/hooks/useKpiPayroll'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { KpiExplanation } from '@/components/kpi/KpiExplanation'
+import { KpiTeamGuide } from '@/components/kpi/KpiTeamGuide'
 import { LEAD_CATEGORIES } from '@/constants/clientMeta'
 import {
   KPI_ROLE_TEMPLATES,
@@ -107,6 +108,8 @@ function KpiPayrollPage({
   )
   const [draft, setDraft] = useState<KpiPayrollInputs>(savedInputs)
   const [savedOk, setSavedOk] = useState('')
+  const [tab, setTab] = useState<'pay' | 'guide'>('guide')
+  const { leads: allLeads } = useKpiLeads('all', month)
 
   useEffect(() => {
     if (loading) return
@@ -189,8 +192,24 @@ function KpiPayrollPage({
             {KPI_ROLE_TEMPLATES[key].shortName}
           </button>
         ))}
+        {(['guide', 'pay'] as const).map((key) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setTab(key)}
+            className={`rounded-lg px-3 py-2 text-sm font-medium ${
+              tab === key ? 'bg-primary text-white' : 'bg-surface text-text shadow-sm'
+            }`}
+          >
+            {key === 'guide' ? 'Для команды' : 'Расчёт зарплаты'}
+          </button>
+        ))}
       </div>
 
+      {tab === 'guide' ? (
+        <KpiTeamGuide month={month} clients={clients} leads={allLeads} />
+      ) : (
+        <>
       <p className="text-sm text-muted">
         Сотрудник в CRM:{' '}
         <span className="font-medium text-text">{manager?.name || 'не найден по должности'}</span>
@@ -575,6 +594,8 @@ function KpiPayrollPage({
           {saving ? 'Сохранение…' : 'Сохранить расчёт месяца'}
         </Button>
       </Card>
+        </>
+      )}
     </div>
   )
 }

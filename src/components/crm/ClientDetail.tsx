@@ -39,6 +39,7 @@ import { ActivityBadge } from '@/components/crm/ActivityBadge'
 import { GroqActivityBadge } from '@/components/crm/GroqActivityBadge'
 import { ActiveDaysMeter } from '@/components/crm/ActiveDaysMeter'
 import { KpiBadge, KpiMomentsMeter } from '@/components/crm/KpiBadge'
+import { IdleTouchHint } from '@/components/crm/IdleTouchHint'
 import { calculateActiveMonths, resolveOpenedDateFromClient } from '@/utils/dateUtils'
 import { canSeeLeadActivity, resolveActivityStatus, resolveOpenedMonth } from '@/utils/leadActivity'
 import { useAiActivityConfig } from '@/hooks/useAiActivityConfig'
@@ -612,17 +613,23 @@ export function ClientDetail({
             </div>
           )}
 
-          <ActiveDaysMeter
-            days={client.activeDaysThisMonth}
-            minDays={minDays}
-            month={month}
-            current={groqCurrent}
-          />
-          <KpiMomentsMeter
-            moments={client.kpiSignificantMoments}
-            minMoments={minMoments}
-            current={kpiCurrent}
-          />
+          {isAdmin ? (
+            <>
+              <ActiveDaysMeter
+                days={client.activeDaysThisMonth}
+                minDays={minDays}
+                month={month}
+                current={groqCurrent}
+              />
+              <KpiMomentsMeter
+                moments={client.kpiSignificantMoments}
+                minMoments={minMoments}
+                current={kpiCurrent}
+              />
+            </>
+          ) : (
+            <IdleTouchHint client={client} />
+          )}
 
           <div className="flex flex-wrap gap-1.5 border-b border-gray-100 pb-3">
             {(

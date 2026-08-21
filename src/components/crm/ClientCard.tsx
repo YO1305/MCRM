@@ -17,7 +17,8 @@ import { useAuth } from '@/hooks/useAuth'
 import { ActivityBadge } from '@/components/crm/ActivityBadge'
 import { GroqActivityBadge } from '@/components/crm/GroqActivityBadge'
 import { ActiveDaysMeter } from '@/components/crm/ActiveDaysMeter'
-import { KpiBadge, KpiMomentsMeter } from '@/components/crm/KpiBadge'
+import { KpiBadge } from '@/components/crm/KpiBadge'
+import { IdleTouchHint } from '@/components/crm/IdleTouchHint'
 import { calculateActiveMonths } from '@/utils/dateUtils'
 import { canSeeLeadActivity, resolveActivityStatus, resolveOpenedMonth } from '@/utils/leadActivity'
 import { useAiActivityConfig } from '@/hooks/useAiActivityConfig'
@@ -47,7 +48,6 @@ export function ClientCard({
   const groqCurrent = groqActivityIsCurrent(client, month)
   const kpiCurrent = kpiMonthIsCurrent(client, month)
   const minDays = activityConfig?.minActiveDays ?? 10
-  const minMoments = activityConfig?.minKpiMoments ?? 3
   const [moreOpen, setMoreOpen] = useState(false)
 
   const isArchived = stageIsClosed(client.stage)
@@ -118,17 +118,16 @@ export function ClientCard({
               {stepOverdue ? ' · просрок' : ''}
             </p>
           )}
-          <ActiveDaysMeter
-            days={client.activeDaysThisMonth}
-            minDays={minDays}
-            month={month}
-            current={groqCurrent}
-          />
-          <KpiMomentsMeter
-            moments={client.kpiSignificantMoments}
-            minMoments={minMoments}
-            current={kpiCurrent}
-          />
+          {isAdmin ? (
+            <ActiveDaysMeter
+              days={client.activeDaysThisMonth}
+              minDays={minDays}
+              month={month}
+              current={groqCurrent}
+            />
+          ) : (
+            <IdleTouchHint client={client} />
+          )}
         </div>
 
         <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-muted">

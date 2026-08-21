@@ -6,8 +6,9 @@ import {
   removeDocument,
 } from '@/firebase/firestore'
 import { useAuth } from '@/hooks/useAuth'
-import type { SmmContentFact, SmmContentItem, SmmTeam } from '@/types/smm.types'
-import { getCurrentMonth, todayISO } from '@/utils/dates'
+import type { SmmContentFact, SmmContentFormat, SmmContentItem, SmmTeam } from '@/types/smm.types'
+import { inferSmmFormat, isSmmItemDone } from '@/types/smm.types'
+import { getCurrentMonth } from '@/utils/dates'
 
 export function useSmm() {
   const { user, isAdmin } = useAuth()
@@ -36,12 +37,20 @@ export function useSmm() {
         ),
       )
     })
-    const u2 = subscribeToCollection<SmmContentItem>('smm_content_items', [], (data) => {
-      setItems(
-        [...data].sort((a, b) => a.title.localeCompare(b.title, 'ru')),
-      )
-      setLoading(false)
-    }, () => setLoading(false))
+    const u2 = subscribeToCollection<SmmContentItem>(
+      'smm_content_items',
+      [],
+      (data) => {
+        setItems(
+          [...data].sort((a, b) =>
+            (a.plannedDate || '').localeCompare(b.plannedDate || '') ||
+            a.title.localeCompare(b.title, 'ru'),
+          ),
+        )
+        setLoading(false)
+      },
+      () => setLoading(false),
+    )
     const u3 = subscribeToCollection<SmmContentFact>('smm_content_facts', [], setFacts)
     return () => {
       u1()
@@ -50,23 +59,26 @@ export function useSmm() {
     }
   }, [user, canManage])
 
-  const factTotalByItem = useMemo(() => {
+  const factCountByItem = useMemo(() => {
     const map = new Map<string, number>()
     for (const f of facts) {
-      map.set(f.contentItemId, (map.get(f.contentItemId) || 0) + (Number(f.count) || 0))
+      map.set(f.contentItemId, (map.get(f.contentItemId) || 0) + 1)
     }
     return map
   }, [facts])
 
-  function factForItem(itemId: string) {
-    return factTotalByItem.get(itemId) || 0
+  function isDone(item: SmmContentItem) {
+    return isSmmItemDone(item, factCountByItem.get(item.id) || 0)
   }
 
-  function isClosed(item: SmmContentItem) {
-    return factForItem(item.id) >= (item.planCount || 0) && (item.planCount || 0) > 0
+  function publishedDateOf(item: SmmContentItem): string | null {
+    if (item.publishedAt) return item.publishedAt
+    const fact = facts
+      .filter((f) => f.contentItemId === item.id)
+      .sort((a, b) => (b.publishedAt || '').localeCompare(a.publishedAt || ''))[0]
+    return fact?.publishedAt || null
   }
 
-  // ——— Teams ———
   async function createTeam(input: {
     name: string
     instagram?: string
@@ -113,24 +125,34 @@ export function useSmm() {
     ])
   }
 
-  // ——— Content plan ———
   async function addContentItem(input: {
     teamId: string
     monthKey: string
+    format: SmmContentFormat
+    formatOther?: string
     title: string
-    planCount: number
+    description?: string
+    plannedDate: string
   }) {
     if (!user || !canManage) throw new Error('Нет доступа')
     const team = teams.find((t) => t.id === input.teamId)
     if (!team) throw new Error('Команда не найдена')
     const title = input.title.trim()
     if (!title) throw new Error('Укажите название')
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(input.plannedDate)) {
+      throw new Error('Укажите запланированную дату публикации')
+    }
+    const inferred = inferSmmFormat(title)
     await createDocument('smm_content_items', {
       teamId: team.id,
       teamName: team.name,
       monthKey: input.monthKey || getCurrentMonth(),
+      format: input.format || inferred.format,
+      formatOther: input.format === 'other' ? (input.formatOther || '').trim() : '',
       title,
-      planCount: Math.max(0, Number(input.planCount) || 0),
+      description: (input.description || '').trim(),
+      plannedDate: input.plannedDate,
+      publishedAt: null,
       createdBy: user.id,
     })
   }
@@ -142,45 +164,22 @@ export function useSmm() {
     await updateDocument('smm_content_items', id, rest as Record<string, unknown>)
   }
 
+  async function markPublished(id: string, publishedAt: string) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(publishedAt)) {
+      throw new Error('Укажите фактическую дату публикации')
+    }
+    await updateContentItem(id, { publishedAt })
+  }
+
+  async function clearPublished(id: string) {
+    await updateContentItem(id, { publishedAt: null })
+  }
+
   async function deleteContentItem(id: string) {
     if (!canManage) throw new Error('Нет доступа')
     const related = facts.filter((f) => f.contentItemId === id)
     await Promise.all(related.map((f) => removeDocument('smm_content_facts', f.id)))
     await removeDocument('smm_content_items', id)
-  }
-
-  async function addFact(input: {
-    contentItemId: string
-    publishedAt?: string
-    count: number
-    note?: string
-  }) {
-    if (!user || !canManage) throw new Error('Нет доступа')
-    const item = items.find((i) => i.id === input.contentItemId)
-    if (!item) throw new Error('Пункт не найден')
-    const count = Math.max(1, Number(input.count) || 1)
-    await createDocument('smm_content_facts', {
-      contentItemId: item.id,
-      teamId: item.teamId,
-      monthKey: item.monthKey,
-      publishedAt: input.publishedAt || todayISO(),
-      count,
-      note: (input.note || '').trim(),
-      createdBy: user.id,
-      createdByName: user.name,
-    })
-  }
-
-  async function updateFact(id: string, patch: Partial<SmmContentFact>) {
-    if (!canManage) throw new Error('Нет доступа')
-    const { id: _i, ...rest } = patch as SmmContentFact
-    void _i
-    await updateDocument('smm_content_facts', id, rest as Record<string, unknown>)
-  }
-
-  async function deleteFact(id: string) {
-    if (!canManage) throw new Error('Нет доступа')
-    await removeDocument('smm_content_facts', id)
   }
 
   return {
@@ -189,16 +188,15 @@ export function useSmm() {
     facts,
     loading,
     canManage,
-    factForItem,
-    isClosed,
+    isDone,
+    publishedDateOf,
     createTeam,
     updateTeam,
     deleteTeam,
     addContentItem,
     updateContentItem,
+    markPublished,
+    clearPublished,
     deleteContentItem,
-    addFact,
-    updateFact,
-    deleteFact,
   }
 }

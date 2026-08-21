@@ -19,22 +19,44 @@ export interface SmmTeam {
   updatedAt?: unknown
 }
 
-/** Content plan line for a team in a given month. */
+export type SmmContentFormat = 'video' | 'post' | 'stories' | 'other'
+
+export const SMM_CONTENT_FORMATS: { id: SmmContentFormat; label: string }[] = [
+  { id: 'video', label: 'Видео' },
+  { id: 'post', label: 'Пост' },
+  { id: 'stories', label: 'Сторис' },
+  { id: 'other', label: 'Иное' },
+]
+
+export function smmFormatLabel(format?: string | null, otherLabel?: string | null): string {
+  if (format === 'other' && otherLabel?.trim()) return otherLabel.trim()
+  return SMM_CONTENT_FORMATS.find((f) => f.id === format)?.label || format || 'Контент'
+}
+
+/** One planned publication for a team in a given month. */
 export interface SmmContentItem {
   id: string
   teamId: string
   teamName: string
   /** YYYY-MM */
   monthKey: string
-  /** e.g. Рилс, Пост, История, Рилс с брендфейсом */
+  format: SmmContentFormat
+  /** If format is other */
+  formatOther?: string
   title: string
-  planCount: number
+  description: string
+  /** Planned publish date YYYY-MM-DD */
+  plannedDate: string
+  /** Actual publish date YYYY-MM-DD — empty until done */
+  publishedAt: string | null
   createdBy: string
   createdAt?: unknown
   updatedAt?: unknown
+  /** @deprecated old “N pieces / month” rows */
+  planCount?: number
 }
 
-/** One publication / fact entry (can add several times until plan is met). */
+/** @deprecated kept for old rows that used “план шт + факты”. */
 export interface SmmContentFact {
   id: string
   contentItemId: string
@@ -49,11 +71,15 @@ export interface SmmContentFact {
   updatedAt?: unknown
 }
 
-export const CONTENT_TYPE_PRESETS = [
-  'Рилс',
-  'Пост',
-  'История',
-  'Рилс с брендфейсом',
-  'Карусель',
-  'Сторис + репост',
-] as const
+export function inferSmmFormat(title: string): { format: SmmContentFormat; formatOther?: string } {
+  const t = title.toLowerCase()
+  if (t.includes('сторис') || t.includes('истори')) return { format: 'stories' }
+  if (t.includes('рилс') || t.includes('видео') || t.includes('reels')) return { format: 'video' }
+  if (t.includes('пост') || t.includes('карусел')) return { format: 'post' }
+  return { format: 'other', formatOther: title.trim() || undefined }
+}
+
+export function isSmmItemDone(item: SmmContentItem, factCount = 0): boolean {
+  if (item.publishedAt && /^\d{4}-\d{2}-\d{2}$/.test(item.publishedAt)) return true
+  return factCount > 0
+}

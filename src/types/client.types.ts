@@ -91,6 +91,12 @@ export interface Client {
   activityAnalyzedAt?: unknown
   activityReason?: string | null
   activeDaysThisMonth?: number | null
+  /** Groq KPI qualification for the current month */
+  kpiQualified?: boolean | null
+  kpiQualifiedMonth?: string | null
+  kpiSignificantMoments?: number | null
+  kpiQualificationReason?: string | null
+  kpiQualifiedAt?: unknown
   createdAt: unknown
   updatedAt: unknown
 }

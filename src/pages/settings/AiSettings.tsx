@@ -30,8 +30,9 @@ import { stageLabel } from '@/constants/clientStages'
 import { todayISO, toISODate } from '@/utils/dates'
 import { POSITION_LABELS } from '@/constants/positions'
 import { AiActivitySettings } from '@/pages/settings/AiActivitySettings'
+import { AiKpiSettings } from '@/pages/settings/AiKpiSettings'
 
-type TabId = 'main' | 'prompt' | 'managers' | 'history' | 'activity'
+type TabId = 'main' | 'prompt' | 'managers' | 'history' | 'activity' | 'kpi'
 
 function formatWhen(value: unknown): string {
   if (!value) return '—'
@@ -255,6 +256,7 @@ export function AiSettings() {
             ['main', 'Основные'],
             ['prompt', 'Промпт'],
             ['activity', 'Активность лидов'],
+            ['kpi', 'KPI квалификация'],
             ['managers', 'Менеджеры'],
             ['history', 'История'],
           ] as const
@@ -522,6 +524,7 @@ export function AiSettings() {
       )}
 
       {tab === 'activity' && <AiActivitySettings />}
+      {tab === 'kpi' && <AiKpiSettings />}
 
       {tab === 'managers' && (
         <Card className="space-y-4">

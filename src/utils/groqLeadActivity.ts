@@ -100,6 +100,13 @@ export function groqActivityIsCurrent(
   return Boolean(client.activityLabel && client.activityMonth === month)
 }
 
+export function kpiMonthIsCurrent(
+  client: Pick<Client, 'kpiQualifiedMonth'>,
+  month: string = getCurrentMonth(),
+): boolean {
+  return client.kpiQualifiedMonth === month
+}
+
 export function activeDaysTone(
   days: number,
   minActiveDays: number,

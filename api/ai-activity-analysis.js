@@ -2,7 +2,7 @@ import { createRequire } from 'node:module'
 import admin from 'firebase-admin'
 
 const require = createRequire(import.meta.url)
-const { runActivityAnalysis, testClientActivity } = require('../functions/leadActivityAnalyzer.js')
+const { runActivityAnalysis, testClientActivity, testClientKpi } = require('../functions/leadActivityAnalyzer.js')
 
 const MAX_LEADS_PER_RUN = 30
 
@@ -90,6 +90,14 @@ export default async function handler(req, res) {
 
     const db = admin.firestore()
     const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body || {}
+
+    if (body.testKpi && body.clientId) {
+      const result = await testClientKpi(db, apiKey, String(body.clientId), {
+        kpiPrompt: body.kpiPrompt || undefined,
+        minKpiMoments: body.minKpiMoments ? Number(body.minKpiMoments) : undefined,
+      })
+      return res.status(200).json({ ok: true, result })
+    }
 
     if (body.test && body.clientId) {
       const result = await testClientActivity(db, apiKey, String(body.clientId), {

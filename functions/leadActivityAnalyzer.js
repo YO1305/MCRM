@@ -1,5 +1,6 @@
 const { FieldValue } = require('firebase-admin/firestore')
 const Groq = require('groq-sdk')
+const { qualifyLeadForKpi, testKpiQualification, DEFAULT_KPI_PROMPT, DEFAULT_MIN_MOMENTS, resolveActiveMonths } = require('./kpiQualifier')
 
 const FINAL_STAGES = new Set(['deal', 'rejected', 'failed', 'abandoned'])
 const REQUEST_DELAY_MS = 300
@@ -244,6 +245,8 @@ async function loadConfig(db) {
     minActiveDays: Math.max(1, Number(data.minActiveDays) || DEFAULT_MIN_DAYS),
     activityPrompt: !storedPrompt.trim() || legacyPrompt ? DEFAULT_ACTIVITY_PROMPT : storedPrompt,
     isActive: data.isActive !== false,
+    minKpiMoments: Math.max(1, Number(data.minKpiMoments) || DEFAULT_MIN_MOMENTS),
+    kpiPrompt: data.kpiPrompt || DEFAULT_KPI_PROMPT,
   }
 }
 
@@ -310,7 +313,7 @@ function alreadyAnalyzedToday(client, todayStr, month) {
   return analyzed === todayStr
 }
 
-async function analyzeOneClient(db, groq, client, config, month, todayStr) {
+async function analyzeOneClient(db, groq, client, config, month, todayStr, options = {}) {
   let history = []
   try {
     history = await loadMonthHistory(db, client.id, month)
@@ -346,7 +349,26 @@ async function analyzeOneClient(db, groq, client, config, month, todayStr) {
     activeDaysThisMonth: activeDaysCount,
     updatedAt: FieldValue.serverTimestamp(),
   })
-  return { ...result, activeDaysCount, input }
+  let kpi = null
+  try {
+    kpi = await qualifyLeadForKpi(
+      db,
+      groq,
+      {
+        ...client,
+        activityLabel: result.label,
+        activityMonth: month,
+        activeDaysThisMonth: activeDaysCount,
+      },
+      history,
+      config,
+      month,
+      options,
+    )
+  } catch (err) {
+    console.error(`KPI step failed for ${client.id}:`, err)
+  }
+  return { ...result, activeDaysCount, input, kpi }
 }
 
 /**
@@ -373,7 +395,7 @@ async function runActivityAnalysis(db, apiKey, options = {}) {
       throw err
     }
     const client = { id: snap.id, ...snap.data() }
-    const analyzed = await analyzeOneClient(db, groqClient, client, config, month, todayStr)
+    const analyzed = await analyzeOneClient(db, groqClient, client, config, month, todayStr, options)
     return {
       ok: true,
       month,
@@ -385,6 +407,7 @@ async function runActivityAnalysis(db, apiKey, options = {}) {
         reason: analyzed.reason,
         activeDaysCount: analyzed.activeDaysCount,
         minActiveDays: config.minActiveDays,
+        kpi: analyzed.kpi || null,
       },
     }
   }
@@ -405,7 +428,7 @@ async function runActivityAnalysis(db, apiKey, options = {}) {
   for (const client of batch) {
     if (Date.now() > deadline) break
     try {
-      await analyzeOneClient(db, groqClient, client, config, month, todayStr)
+      await analyzeOneClient(db, groqClient, client, config, month, todayStr, options)
       processed += 1
       await new Promise((resolve) => setTimeout(resolve, REQUEST_DELAY_MS))
     } catch (error) {
@@ -434,6 +457,20 @@ async function runActivityAnalysis(db, apiKey, options = {}) {
       } catch (writeErr) {
         errors += 1
         lastError = writeErr?.message || lastError
+      }
+    }
+  }
+
+  if (Date.now() < deadline) {
+    for (const docSnap of clientsSnap.docs) {
+      if (Date.now() > deadline) break
+      const client = { id: docSnap.id, ...docSnap.data() }
+      if (client.stage !== 'deal') continue
+      if (resolveActiveMonths(client, month) !== 1) continue
+      try {
+        await qualifyLeadForKpi(db, groqClient, client, [], config, month, options)
+      } catch (err) {
+        console.error(`KPI auto-deal failed for ${client.id}:`, err)
       }
     }
   }
@@ -469,6 +506,19 @@ async function testClientActivity(db, apiKey, clientId, configOverride) {
   }
 }
 
+async function testClientKpi(db, apiKey, clientId, configOverride) {
+  const groqClient = new Groq({ apiKey: String(apiKey || '') })
+  const preview = await buildTestPreview(db, clientId, configOverride)
+  return testKpiQualification(
+    db,
+    groqClient,
+    preview.client,
+    preview.history,
+    preview.config,
+    tashkentMonth(),
+  )
+}
+
 async function buildTestPreview(db, clientId, configOverride) {
   const config = { ...(await loadConfig(db)), ...(configOverride || {}) }
   const snap = await db.collection('clients').doc(clientId).get()
@@ -497,6 +547,8 @@ async function buildTestPreview(db, clientId, configOverride) {
     input,
     prompt: buildActivityPrompt(config.activityPrompt, input),
     config,
+    client,
+    history,
   }
 }
 
@@ -506,6 +558,7 @@ module.exports = {
   buildActivityPrompt,
   buildTestPreview,
   testClientActivity,
+  testClientKpi,
   loadConfig,
   DEFAULT_ACTIVITY_PROMPT,
   calculateActiveDays,

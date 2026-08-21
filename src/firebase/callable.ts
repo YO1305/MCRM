@@ -197,12 +197,16 @@ export interface GroqActivityAnalysisResult {
   skippedAll?: boolean
   reason?: string
   result?: {
-    label: 'active' | 'passive' | 'paused'
-    score: number
-    reason: string
-    activeDaysCount: number
-    minActiveDays: number
+    label?: 'active' | 'passive' | 'paused'
+    score?: number
+    reason?: string
+    activeDaysCount?: number
+    minActiveDays?: number
     clientName?: string
+    significantMoments?: number
+    qualifies?: boolean
+    minKpiMoments?: number
+    kpi?: unknown
   }
 }
 
@@ -211,8 +215,11 @@ export async function runActivityAnalysisNow(input?: {
   clientId?: string
   force?: boolean
   test?: boolean
+  testKpi?: boolean
   activityPrompt?: string
   minActiveDays?: number
+  kpiPrompt?: string
+  minKpiMoments?: number
 }): Promise<GroqActivityAnalysisResult> {
   return adminApi<GroqActivityAnalysisResult>('/api/ai-activity-analysis', input || {})
 }

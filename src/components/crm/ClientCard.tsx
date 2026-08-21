@@ -17,10 +17,11 @@ import { useAuth } from '@/hooks/useAuth'
 import { ActivityBadge } from '@/components/crm/ActivityBadge'
 import { GroqActivityBadge } from '@/components/crm/GroqActivityBadge'
 import { ActiveDaysMeter } from '@/components/crm/ActiveDaysMeter'
+import { KpiBadge, KpiMomentsMeter } from '@/components/crm/KpiBadge'
 import { calculateActiveMonths } from '@/utils/dateUtils'
 import { canSeeLeadActivity, resolveActivityStatus, resolveOpenedMonth } from '@/utils/leadActivity'
 import { useAiActivityConfig } from '@/hooks/useAiActivityConfig'
-import { groqActivityIsCurrent } from '@/utils/groqLeadActivity'
+import { groqActivityIsCurrent, kpiMonthIsCurrent } from '@/utils/groqLeadActivity'
 import { getCurrentMonth } from '@/utils/dates'
 
 interface ClientCardProps {
@@ -44,7 +45,9 @@ export function ClientCard({
   const { config: activityConfig } = useAiActivityConfig()
   const month = getCurrentMonth()
   const groqCurrent = groqActivityIsCurrent(client, month)
+  const kpiCurrent = kpiMonthIsCurrent(client, month)
   const minDays = activityConfig?.minActiveDays ?? 10
+  const minMoments = activityConfig?.minKpiMoments ?? 3
   const [moreOpen, setMoreOpen] = useState(false)
 
   const isArchived = stageIsClosed(client.stage)
@@ -87,6 +90,14 @@ export function ClientCard({
               current={groqCurrent}
             />
           )}
+          {isAdmin && (
+            <KpiBadge
+              qualified={client.kpiQualified}
+              moments={client.kpiSignificantMoments}
+              reason={client.kpiQualificationReason}
+              current={kpiCurrent}
+            />
+          )}
         </div>
 
         <div className="mt-1.5 space-y-1 text-xs text-muted">
@@ -112,6 +123,11 @@ export function ClientCard({
             minDays={minDays}
             month={month}
             current={groqCurrent}
+          />
+          <KpiMomentsMeter
+            moments={client.kpiSignificantMoments}
+            minMoments={minMoments}
+            current={kpiCurrent}
           />
         </div>
 

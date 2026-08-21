@@ -22,6 +22,8 @@ function normalizeConfig(raw: Partial<AiActivityConfig> | undefined): AiActivity
         ? DEFAULT_ACTIVITY_PROMPT
         : raw.activityPrompt,
     isActive: raw?.isActive !== false,
+    minKpiMoments: Math.max(1, Number(raw?.minKpiMoments ?? DEFAULT_AI_ACTIVITY_CONFIG.minKpiMoments) || 3),
+    kpiPrompt: raw?.kpiPrompt || DEFAULT_AI_ACTIVITY_CONFIG.kpiPrompt,
   }
 }
 

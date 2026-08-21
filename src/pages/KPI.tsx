@@ -62,8 +62,9 @@ export function KPI() {
           {isAdmin ? 'KPI — лиды команды' : 'Мои KPI · лиды'}
         </h1>
         <p className="mt-1 text-sm text-muted">
-          Факт по старым месяцам сохранён в журнале. Новые лиды с этапов больше не
-          фиксируются — активность считает Groq (Настройки → ИИ Помощник → Активность лидов).
+          Факт по старым месяцам сохранён в журнале. С этого месяца в факт идут только
+          активные лиды, где клиент сделал минимум 3 весомых шага (Настройки → ИИ → KPI
+          квалификация). Сделка в 1-м месяце засчитывается сразу.
         </p>
       </div>
 
@@ -145,7 +146,8 @@ export function KPI() {
           <p className="text-sm text-muted">Загрузка...</p>
         ) : leads.length === 0 ? (
           <p className="text-sm text-muted">
-            За этот месяц лидов в журнале нет. Новые лиды с этапов больше не пишутся сюда.
+            За этот месяц в журнале ещё нет квалифицированных KPI-лидов. Запустите анализ
+            в Настройки → ИИ → KPI квалификация.
           </p>
         ) : (
           <ul className="divide-y divide-gray-100">
@@ -168,6 +170,9 @@ export function KPI() {
                 </div>
                 <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
                   {lead.month}
+                  {typeof lead.significantMoments === 'number'
+                    ? ` · ${lead.significantMoments >= 900 ? 'сделка' : `${lead.significantMoments} мом.`}`
+                    : ''}
                 </span>
               </li>
             ))}

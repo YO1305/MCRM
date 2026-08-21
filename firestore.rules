@@ -149,7 +149,7 @@ service cloud.firestore {
 
     match /kpi_lead_log/{logId} {
       allow read: if isAdmin() || resource.data.assignedTo == request.auth.uid;
-      allow create: if isSignedIn();
+      allow create: if false;
       allow update, delete: if isAdmin();
     }
 

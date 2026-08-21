@@ -12,6 +12,10 @@ export interface KpiLeadLog {
   categories?: LeadCategory[]
   country?: string | null
   month: string
+  significantMoments?: number
+  qualifiedAt?: unknown
+  activeMonthsCount?: number
+  source?: string
   fixedAt: unknown
   stage: string
 }

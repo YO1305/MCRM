@@ -25,14 +25,21 @@
       ]
     },
     {
-      "collectionGroup": "ai_tasks",
+      "collectionGroup": "kpi_lead_log",
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "assignedTo", "order": "ASCENDING" },
-        { "fieldPath": "status", "order": "ASCENDING" },
-        { "fieldPath": "generatedAt", "order": "DESCENDING" }
+        { "fieldPath": "month", "order": "ASCENDING" }
       ]
     },
+    {
+      "collectionGroup": "kpi_lead_log",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "clientId", "order": "ASCENDING" },
+        { "fieldPath": "month", "order": "ASCENDING" }
+      ]
+    }
     {
       "collectionGroup": "ai_tasks",
       "queryScope": "COLLECTION",

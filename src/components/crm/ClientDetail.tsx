@@ -38,10 +38,11 @@ import { clientStepOverdue, visitPrepareDate } from '@/utils/clientWork'
 import { ActivityBadge } from '@/components/crm/ActivityBadge'
 import { GroqActivityBadge } from '@/components/crm/GroqActivityBadge'
 import { ActiveDaysMeter } from '@/components/crm/ActiveDaysMeter'
+import { KpiBadge, KpiMomentsMeter } from '@/components/crm/KpiBadge'
 import { calculateActiveMonths, resolveOpenedDateFromClient } from '@/utils/dateUtils'
 import { canSeeLeadActivity, resolveActivityStatus, resolveOpenedMonth } from '@/utils/leadActivity'
 import { useAiActivityConfig } from '@/hooks/useAiActivityConfig'
-import { groqActivityIsCurrent } from '@/utils/groqLeadActivity'
+import { groqActivityIsCurrent, kpiMonthIsCurrent } from '@/utils/groqLeadActivity'
 
 interface ClientDetailProps {
   client: Client | null
@@ -160,7 +161,9 @@ export function ClientDetail({
   const { config: activityConfig } = useAiActivityConfig()
   const month = getCurrentMonth()
   const groqCurrent = groqActivityIsCurrent(client || {}, month)
+  const kpiCurrent = kpiMonthIsCurrent(client || {}, month)
   const minDays = activityConfig?.minActiveDays ?? 10
+  const minMoments = activityConfig?.minKpiMoments ?? 3
 
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
@@ -558,6 +561,14 @@ export function ClientDetail({
                 current={groqCurrent}
               />
             )}
+            {isAdmin && (
+              <KpiBadge
+                qualified={client.kpiQualified}
+                moments={client.kpiSignificantMoments}
+                reason={client.kpiQualificationReason}
+                current={kpiCurrent}
+              />
+            )}
             <Badge variant="default">{sourceList.labelOf(source)}</Badge>
             <Badge variant="info">{countryName(country)}</Badge>
             {categories.map((c) => (
@@ -606,6 +617,11 @@ export function ClientDetail({
             minDays={minDays}
             month={month}
             current={groqCurrent}
+          />
+          <KpiMomentsMeter
+            moments={client.kpiSignificantMoments}
+            minMoments={minMoments}
+            current={kpiCurrent}
           />
 
           <div className="flex flex-wrap gap-1.5 border-b border-gray-100 pb-3">

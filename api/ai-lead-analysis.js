@@ -409,7 +409,6 @@ async function runAnalysis() {
   for (const docSnap of clientsSnap.docs) {
     const client = { id: docSnap.id, ...docSnap.data() }
     if (FINAL_STAGES.has(client.stage)) continue
-    if (client.activityStatus === 'frozen') continue
     if (!client.assignedTo) continue
     if (pausedManagers.has(client.assignedTo)) continue
     if (enabledSet.size && !enabledSet.has(client.assignedTo)) continue

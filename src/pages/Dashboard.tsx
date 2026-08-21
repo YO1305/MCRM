@@ -10,9 +10,7 @@ import { POSITION_LABELS } from '@/constants/positions'
 import { subscribeToCollection } from '@/firebase/firestore'
 import { runAiLeadAnalysisNow, runActivityAnalysisNow } from '@/firebase/callable'
 import type { Task } from '@/types/task.types'
-import { useAiConfig } from '@/hooks/useAiConfig'
 import { useAiActivityConfig } from '@/hooks/useAiActivityConfig'
-import { canSeeLeadActivity, countLeadActivity } from '@/utils/leadActivity'
 import { countGroqActivity, formatMonthNominative, monthBarWidth } from '@/utils/groqLeadActivity'
 import { getCurrentMonth, todayISO, toISODate } from '@/utils/dates'
 import { syncOpenedMonthsFromHistory } from '@/utils/syncOpenedMonths'
@@ -23,23 +21,12 @@ export function Dashboard() {
   const { user, isAdmin } = useAuth()
   const { clients } = useClients()
   const { tasks: aiTasks } = useAiTasks()
-  const showActivity = isAdmin || canSeeLeadActivity(user)
-  const { config: aiConfig } = useAiConfig()
   const { config: groqActivityConfig } = useAiActivityConfig()
   const month = getCurrentMonth()
   const groqCounts = useMemo(() => countGroqActivity(clients, month), [clients, month])
   const groqTotal =
     groqCounts.active + groqCounts.passive + groqCounts.paused + groqCounts.unlabeled
   const [activityRunning, setActivityRunning] = useState(false)
-  const activityCounts = useMemo(
-    () =>
-      countLeadActivity(clients, {
-        touchThresholdDays: aiConfig?.touchThresholdDays,
-        movementThresholdDays: aiConfig?.movementThresholdDays,
-        maxActiveMonths: aiConfig?.maxActiveMonths,
-      }),
-    [clients, aiConfig],
-  )
   const [tasks, setTasks] = useState<Task[]>([])
   const [aiRunning, setAiRunning] = useState(false)
   const [syncingMonths, setSyncingMonths] = useState(false)
@@ -147,10 +134,10 @@ export function Dashboard() {
         </Card>
       </div>
 
-      {showActivity && (
+      {isAdmin && (
         <Card className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold text-text">Лиды по активности</h2>
+            <h2 className="text-lg font-semibold text-text">Сервис CRM</h2>
             <div className="flex flex-wrap items-center gap-2">
               {isAdmin && (
                 <>
@@ -271,27 +258,9 @@ export function Dashboard() {
             </div>
           </div>
           <p className="text-xs text-muted">
-            «Новый» = 1-й месяц с даты открытия лида (не дата занесения в CRM). Менеджер ставит
-            точную дату в карточке; либо используйте кнопку выше по истории.
+            Служебные кнопки. Активность лидов за месяц — в блоке Groq ниже, не по старым порогам
+            «новый / заморожен».
           </p>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <div>
-              <p className="text-sm text-muted">Новые</p>
-              <p className="mt-1 text-2xl font-bold text-blue-600">{activityCounts.new}</p>
-            </div>
-            <div>
-              <p className="text-sm text-muted">Активные</p>
-              <p className="mt-1 text-2xl font-bold text-emerald-600">{activityCounts.active}</p>
-            </div>
-            <div>
-              <p className="text-sm text-muted">Требуют внимания</p>
-              <p className="mt-1 text-2xl font-bold text-amber-600">{activityCounts.critical}</p>
-            </div>
-            <div>
-              <p className="text-sm text-muted">Замороженные</p>
-              <p className="mt-1 text-2xl font-bold text-gray-600">{activityCounts.frozen}</p>
-            </div>
-          </div>
         </Card>
       )}
 

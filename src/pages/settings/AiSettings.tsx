@@ -141,10 +141,7 @@ export function AiSettings() {
         model: form.model,
         temperature: form.temperature,
         maxTokens: form.maxTokens,
-        touchThresholdDays: form.touchThresholdDays,
-        movementThresholdDays: form.movementThresholdDays,
         waitChaseMinDays: form.waitChaseMinDays,
-        maxActiveMonths: form.maxActiveMonths,
         promptTemplate: form.promptTemplate,
         isActive: form.isActive,
         enabledForManagers: managerMode === 'all' ? [] : form.enabledForManagers,
@@ -327,26 +324,13 @@ export function AiSettings() {
 
           <div>
             <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
-              Пороги активности лидов
+              ИИ-задачи
             </h2>
             <p className="mt-1 text-xs text-muted">
-              Эти же числа использует статус Новый / Активный / Заморожен.
+              Активность лидов (активный / пассивный / пауза) задаётся отдельно во вкладке
+              «Активность лидов», а не этими настройками.
             </p>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <Input
-                label="Касание раз в (дней)"
-                type="number"
-                min={1}
-                value={String(form.touchThresholdDays)}
-                onChange={(e) => patchForm({ touchThresholdDays: Number(e.target.value) })}
-              />
-              <Input
-                label="Движение раз в (дней)"
-                type="number"
-                min={1}
-                value={String(form.movementThresholdDays)}
-                onChange={(e) => patchForm({ movementThresholdDays: Number(e.target.value) })}
-              />
+            <div className="mt-3 max-w-sm">
               <Input
                 label="Ждём ответа — ИИ не раньше (дней)"
                 type="number"
@@ -354,14 +338,6 @@ export function AiSettings() {
                 max={30}
                 value={String(form.waitChaseMinDays)}
                 onChange={(e) => patchForm({ waitChaseMinDays: Number(e.target.value) })}
-              />
-              <Input
-                label="Макс. месяцев работы"
-                type="number"
-                min={1}
-                max={12}
-                value={String(form.maxActiveMonths)}
-                onChange={(e) => patchForm({ maxActiveMonths: Number(e.target.value) })}
               />
             </div>
             <p className="mt-2 text-xs text-muted">

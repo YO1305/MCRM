@@ -14,11 +14,8 @@ import { countryName } from '@/constants/leadProducts'
 import { clientHasActiveStep, clientStepOverdue } from '@/utils/clientWork'
 import { useClientStages } from '@/hooks/useClientStages'
 import { useAuth } from '@/hooks/useAuth'
-import { ActivityBadge } from '@/components/crm/ActivityBadge'
 import { GroqActivityBadge } from '@/components/crm/GroqActivityBadge'
 import { ActiveDaysMeter } from '@/components/crm/ActiveDaysMeter'
-import { calculateActiveMonths } from '@/utils/dateUtils'
-import { canSeeLeadActivity, resolveActivityStatus, resolveOpenedMonth } from '@/utils/leadActivity'
 import { useAiActivityConfig } from '@/hooks/useAiActivityConfig'
 import { groqActivityIsCurrent } from '@/utils/groqLeadActivity'
 import { getCurrentMonth } from '@/utils/dates'
@@ -39,8 +36,7 @@ export function ClientCard({
   onCompleteStep,
 }: ClientCardProps) {
   const { funnel, closed: archiveStages } = useClientStages()
-  const { user, isAdmin } = useAuth()
-  const showActivity = isAdmin || canSeeLeadActivity(user)
+  const { isAdmin } = useAuth()
   const { config: activityConfig } = useAiActivityConfig()
   const month = getCurrentMonth()
   const groqCurrent = groqActivityIsCurrent(client, month)
@@ -73,12 +69,6 @@ export function ClientCard({
         <div className="flex flex-wrap items-start gap-1.5">
           <h3 className="flex-1 text-sm font-semibold text-text">{client.name}</h3>
           <Badge variant={stageBadge(client.stage)}>{stageLabel(client.stage)}</Badge>
-          {showActivity && (
-            <ActivityBadge
-              status={resolveActivityStatus(client)}
-              months={calculateActiveMonths(resolveOpenedMonth(client))}
-            />
-          )}
           {isAdmin && (
             <GroqActivityBadge
               label={client.activityLabel}

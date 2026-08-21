@@ -323,7 +323,6 @@ async function runDailyAiLeadAnalysis(db, apiKey) {
   const activeDocs = clientsSnap.docs.filter((docSnap) => {
     const client = docSnap.data() || {}
     if (isLeadFinal(client.stage)) return false
-    if (client.activityStatus === 'frozen') return false
     if (!client.assignedTo) return false
     if (pausedManagers.has(client.assignedTo)) return false
     if (enabledSet.size && !enabledSet.has(client.assignedTo)) return false

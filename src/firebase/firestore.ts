@@ -21,6 +21,25 @@ export async function getDocument<T>(collectionName: string, id: string): Promis
   return { id: snap.id, ...snap.data() } as T
 }
 
+export function subscribeToDocument<T>(
+  collectionName: string,
+  id: string,
+  callback: (data: T | null) => void,
+  onError?: (error: Error) => void,
+): Unsubscribe {
+  return onSnapshot(
+    doc(db, collectionName, id),
+    (snapshot) => {
+      if (!snapshot.exists()) {
+        callback(null)
+        return
+      }
+      callback({ id: snapshot.id, ...snapshot.data() } as T)
+    },
+    (error) => onError?.(error),
+  )
+}
+
 export function subscribeToCollection<T>(
   collectionName: string,
   constraints: QueryConstraint[],

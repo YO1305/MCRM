@@ -1,70 +1,167 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 import { useUsers } from '@/hooks/useUsers'
+import { useClients } from '@/hooks/useClients'
 import { useKpiLeads } from '@/hooks/useKpiLeads'
+import { useKpiPayroll } from '@/hooks/useKpiPayroll'
 import { Card } from '@/components/ui/Card'
+import { Button } from '@/components/ui/Button'
+import { KpiExplanation } from '@/components/kpi/KpiExplanation'
 import { LEAD_CATEGORIES } from '@/constants/clientMeta'
+import {
+  KPI_ROLE_TEMPLATES,
+  INSTAGRAM_TIERS,
+  applySuggestedDealCounts,
+  calculatePayroll,
+  findPayrollManager,
+  formatKpiMoney,
+  formatPercent,
+  suggestDealsForMonth,
+} from '@/constants/kpiPayroll'
+import { groqActivityIsCurrent, kpiMonthIsCurrent } from '@/utils/groqLeadActivity'
 import { getCurrentMonth } from '@/utils/dates'
+import type { DealBandId, KpiPayrollInputs, KpiPayrollRole } from '@/types/kpiPayroll.types'
 import type { LeadCategory } from '@/types/kpiLead.types'
-import { POSITION_LABELS } from '@/constants/positions'
 
-function monthOptions(count = 6) {
+function monthOptions(count = 8) {
   const result: string[] = []
   const now = new Date()
   for (let i = 0; i < count; i++) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
-    const y = d.getFullYear()
-    const m = String(d.getMonth() + 1).padStart(2, '0')
-    result.push(`${y}-${m}`)
+    result.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
   }
   return result
 }
 
 function formatMonthLabel(month: string) {
   const [y, m] = month.split('-').map(Number)
-  const d = new Date(y, (m || 1) - 1, 1)
-  return d.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' })
+  return new Date(y, (m || 1) - 1, 1).toLocaleDateString('ru-RU', {
+    month: 'long',
+    year: 'numeric',
+  })
+}
+
+function leadCats(lead: { categories?: LeadCategory[]; category?: LeadCategory }) {
+  if (lead.categories?.length) return lead.categories
+  return lead.category ? [lead.category] : []
 }
 
 export function KPI() {
   const { user, isAdmin } = useAuth()
   const { users } = useUsers(isAdmin)
+  const { clients } = useClients()
   const [month, setMonth] = useState(getCurrentMonth())
-  const [managerId, setManagerId] = useState(isAdmin ? 'all' : user?.id || '')
+  const [role, setRole] = useState<KpiPayrollRole>('aygul')
 
-  const effectiveUserId = isAdmin ? managerId : user?.id || ''
-  const { counts, leads, loading } = useKpiLeads(effectiveUserId, month)
+  if (!isAdmin) {
+    return (
+      <div className="mx-auto max-w-lg py-16 text-center">
+        <h1 className="text-xl font-bold text-text">KPI недоступен</h1>
+        <p className="mt-2 text-sm text-muted">Раздел зарплаты KPI виден только администратору.</p>
+      </div>
+    )
+  }
 
-  const managers = useMemo(
-    () =>
-      users.filter(
-        (u) =>
-          u.isActive !== false &&
-          (u.position === 'leads_manager_1' ||
-            u.position === 'leads_manager_2' ||
-            u.position === 'operator' ||
-            u.position === 'head' ||
-            u.role === 'admin'),
-      ),
-    [users],
+  return (
+    <KpiPayrollPage
+      month={month}
+      setMonth={setMonth}
+      role={role}
+      setRole={setRole}
+      users={users}
+      clients={clients}
+      adminId={user?.id || ''}
+      adminName={user?.name || ''}
+    />
+  )
+}
+
+function KpiPayrollPage({
+  month,
+  setMonth,
+  role,
+  setRole,
+  users,
+  clients,
+  adminId,
+  adminName,
+}: {
+  month: string
+  setMonth: (v: string) => void
+  role: KpiPayrollRole
+  setRole: (v: KpiPayrollRole) => void
+  users: ReturnType<typeof useUsers>['users']
+  clients: ReturnType<typeof useClients>['clients']
+  adminId: string
+  adminName: string
+}) {
+  const tpl = KPI_ROLE_TEMPLATES[role]
+  const manager = useMemo(() => findPayrollManager(users, role), [users, role])
+  const managerId = manager?.id || ''
+  const { counts, leads, loading: leadsLoading } = useKpiLeads(managerId, month)
+  const { inputs: savedInputs, loading, saving, error, save } = useKpiPayroll(
+    role,
+    month,
+    true,
+  )
+  const [draft, setDraft] = useState<KpiPayrollInputs>(savedInputs)
+  const [savedOk, setSavedOk] = useState('')
+
+  useEffect(() => {
+    if (loading) return
+    setDraft(savedInputs)
+    setSavedOk('')
+  }, [role, month, loading, savedInputs])
+
+  const leadFacts = {
+    fabric: counts.fabric,
+    finished: counts.finished,
+    europe: counts.europe,
+  }
+  const calc = useMemo(() => calculatePayroll(role, draft, leadFacts), [role, draft, counts])
+
+  const suggestions = useMemo(
+    () => suggestDealsForMonth(clients, managerId, month),
+    [clients, managerId, month],
   )
 
-  const rows: { key: LeadCategory; label: string; fact: number }[] = [
-    { key: 'fabric', label: LEAD_CATEGORIES.fabric, fact: counts.fabric },
-    { key: 'finished', label: LEAD_CATEGORIES.finished, fact: counts.finished },
-    { key: 'europe', label: LEAD_CATEGORIES.europe, fact: counts.europe },
-  ]
+  const countedIds = useMemo(() => new Set(leads.map((l) => l.clientId)), [leads])
+
+  const notCounted = useMemo(() => {
+    if (!managerId) return []
+    return clients
+      .filter((c) => c.assignedTo === managerId)
+      .filter((c) => groqActivityIsCurrent(c, month) && c.activityLabel === 'active')
+      .filter((c) => !countedIds.has(c.id))
+      .filter((c) => !(c.kpiQualified === true && kpiMonthIsCurrent(c, month)))
+      .sort((a, b) => a.name.localeCompare(b.name, 'ru'))
+  }, [clients, managerId, month, countedIds])
+
+  function patch(partial: Partial<KpiPayrollInputs>) {
+    setDraft((prev) => ({ ...prev, ...partial }))
+    setSavedOk('')
+  }
+
+  async function handleSave() {
+    setSavedOk('')
+    try {
+      await save(draft, { id: adminId, name: adminName })
+      setSavedOk('Расчёт сохранён')
+    } catch {
+      /* error in hook */
+    }
+  }
+
+  const dutiesDone = tpl.duties.filter((d) => draft.dutyDone[d.id]).length
 
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-bold text-text">
-          {isAdmin ? 'KPI — лиды команды' : 'Мои KPI · лиды'}
-        </h1>
+        <h1 className="text-2xl font-bold text-text">KPI · зарплата менеджеров по лидам</h1>
         <p className="mt-1 text-sm text-muted">
-          Факт по старым месяцам сохранён в журнале. С этого месяца в факт идут только
-          активные лиды, где клиент сделал минимум 3 весомых шага (Настройки → ИИ → KPI
-          квалификация). Сделка в 1-м месяце засчитывается сразу.
+          Как в файлах 02 (Айгуль) и 03 (Кундуз). Факт лидов подтягивается из CRM. Сделки и SMM /
+          шоурум проверяете и сохраняете.
         </p>
       </div>
 
@@ -80,60 +177,151 @@ export function KPI() {
             </option>
           ))}
         </select>
-
-        {isAdmin && (
-          <select
-            value={managerId}
-            onChange={(e) => setManagerId(e.target.value)}
-            className="rounded-lg border border-gray-200 bg-surface px-3 py-2 text-sm outline-none focus:border-secondary"
+        {(['aygul', 'kunduz'] as const).map((key) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setRole(key)}
+            className={`rounded-lg px-3 py-2 text-sm font-medium ${
+              role === key ? 'bg-secondary text-white' : 'bg-surface text-text shadow-sm'
+            }`}
           >
-            <option value="all">Вся команда</option>
-            {managers.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.name} · {POSITION_LABELS[u.position]}
-              </option>
-            ))}
-          </select>
-        )}
+            {KPI_ROLE_TEMPLATES[key].shortName}
+          </button>
+        ))}
       </div>
 
+      <p className="text-sm text-muted">
+        Сотрудник в CRM:{' '}
+        <span className="font-medium text-text">{manager?.name || 'не найден по должности'}</span>
+        {manager ? ` · ${tpl.title}` : ` · нужна должность «${tpl.position}»`}
+      </p>
+
+      <KpiExplanation role={role} />
+
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <StatChip label="Всего лидов" value={counts.total} tone="secondary" />
-        <StatChip label="Ткань" value={counts.fabric} />
-        <StatChip label="ГП" value={counts.finished} />
-        <StatChip label="Европа" value={counts.europe} />
+        <StatChip label="На руки" value={formatKpiMoney(calc.handsTotal)} tone="secondary" />
+        <StatChip label="Фикса" value={formatKpiMoney(calc.fixa)} />
+        <StatChip label="KPI блок 2" value={formatKpiMoney(calc.block2Total)} />
+        <StatChip label="Бонусы блок 3" value={formatKpiMoney(calc.block3Total)} />
       </div>
 
       <Card className="space-y-3">
-        <h2 className="text-base font-semibold text-text">Факт за {formatMonthLabel(month)}</h2>
+        <h2 className="text-base font-semibold text-text">Блок 1 — фикса</h2>
         <p className="text-xs text-muted">
-          Планы пока ведутся в Excel. Здесь — автоматический факт из CRM.
+          Оклад {formatKpiMoney(calc.salary)}. Начислено = оклад × дни факт / дни план.
         </p>
+        <div className="flex flex-wrap gap-3">
+          <NumField
+            label="Раб. дни план"
+            value={draft.workDaysPlan}
+            onChange={(v) => patch({ workDaysPlan: v })}
+          />
+          <NumField
+            label="Раб. дни факт"
+            value={draft.workDaysFact}
+            onChange={(v) => patch({ workDaysFact: v })}
+          />
+        </div>
+        <p className="text-sm font-semibold text-text">
+          {formatPercent(calc.workRatio)} · {formatKpiMoney(calc.fixa)}
+        </p>
+      </Card>
+
+      <Card className="space-y-3">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <h2 className="text-base font-semibold text-text">Блок 2 — KPI</h2>
+            <p className="text-xs text-muted">
+              Фонд {formatKpiMoney(calc.kpiFund)}. Сумма = фонд × вес × коэффициент.
+            </p>
+          </div>
+          <label className="flex items-center gap-2 text-xs text-muted">
+            <input
+              type="checkbox"
+              checked={Boolean(draft.leadOverride)}
+              onChange={(e) =>
+                patch({
+                  leadOverride: e.target.checked
+                    ? { fabric: leadFacts.fabric, finished: leadFacts.finished, europe: leadFacts.europe }
+                    : null,
+                })
+              }
+            />
+            Править факт лидов вручную
+          </label>
+        </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[320px] text-left text-sm">
+          <table className="w-full min-w-[640px] text-left text-sm">
             <thead>
               <tr className="border-b border-gray-100 text-xs text-muted">
-                <th className="py-2 pr-3 font-medium">Категория</th>
-                <th className="py-2 pr-3 font-medium">План</th>
-                <th className="py-2 font-medium">Факт</th>
+                <th className="py-2 pr-2 font-medium">Показатель</th>
+                <th className="py-2 pr-2 font-medium">Вес</th>
+                <th className="py-2 pr-2 font-medium">План</th>
+                <th className="py-2 pr-2 font-medium">Факт</th>
+                <th className="py-2 pr-2 font-medium">%</th>
+                <th className="py-2 pr-2 font-medium">Коэфф.</th>
+                <th className="py-2 font-medium">Сумма</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
-                <tr key={row.key} className="border-b border-gray-50">
-                  <td className="py-2.5 pr-3 font-medium text-text">{row.label}</td>
-                  <td className="py-2.5 pr-3 text-muted">—</td>
-                  <td className="py-2.5 font-semibold text-text">
-                    {loading ? '…' : row.fact}
+              {calc.block2Rows.map((row) => (
+                <tr key={row.id} className="border-b border-gray-50 align-top">
+                  <td className="py-2 pr-2">
+                    <p className="font-medium text-text">{row.label}</p>
+                    <p className="text-[11px] text-muted">{row.hint}</p>
                   </td>
+                  <td className="py-2 pr-2">{Math.round(row.weight * 100)} %</td>
+                  <td className="py-2 pr-2">{row.plan}</td>
+                  <td className="py-2 pr-2">
+                    {row.id === 'smm' ? (
+                      <select
+                        value={String(draft.smmFact)}
+                        onChange={(e) => patch({ smmFact: Number(e.target.value) })}
+                        className="rounded-md border border-gray-200 px-2 py-1 text-sm"
+                      >
+                        <option value="0">0 — не выполнено</option>
+                        <option value="0.5">0,5 — частично (&lt;60% = 0 ₽)</option>
+                        <option value="1">1 — выполнено</option>
+                      </select>
+                    ) : row.id === 'showroom' ? (
+                      <select
+                        value={String(draft.showroomFact)}
+                        onChange={(e) => patch({ showroomFact: Number(e.target.value) })}
+                        className="rounded-md border border-gray-200 px-2 py-1 text-sm"
+                      >
+                        <option value="0">0 — не в норме</option>
+                        <option value="1">1 — в норме</option>
+                      </select>
+                    ) : draft.leadOverride ? (
+                      <input
+                        type="number"
+                        min={0}
+                        className="w-20 rounded-md border border-gray-200 px-2 py-1 text-sm"
+                        value={draft.leadOverride[row.id as 'fabric' | 'finished' | 'europe']}
+                        onChange={(e) =>
+                          patch({
+                            leadOverride: {
+                              ...draft.leadOverride!,
+                              [row.id]: Number(e.target.value) || 0,
+                            },
+                          })
+                        }
+                      />
+                    ) : (
+                      <span className="font-semibold">{leadsLoading ? '…' : row.fact}</span>
+                    )}
+                  </td>
+                  <td className="py-2 pr-2">{formatPercent(row.ratio)}</td>
+                  <td className="py-2 pr-2 font-semibold">{row.coefficient}</td>
+                  <td className="py-2 font-semibold text-text">{formatKpiMoney(row.amount)}</td>
                 </tr>
               ))}
               <tr>
-                <td className="py-2.5 pr-3 font-semibold text-text">Итого</td>
-                <td className="py-2.5 pr-3 text-muted">—</td>
-                <td className="py-2.5 font-bold text-secondary">
-                  {loading ? '…' : counts.total}
+                <td className="py-2.5 font-semibold" colSpan={6}>
+                  Итого блок 2
                 </td>
+                <td className="py-2.5 font-bold text-secondary">{formatKpiMoney(calc.block2Total)}</td>
               </tr>
             </tbody>
           </table>
@@ -141,45 +329,276 @@ export function KPI() {
       </Card>
 
       <Card className="space-y-3">
-        <h2 className="text-base font-semibold text-text">Зафиксированные лиды</h2>
-        {loading ? (
-          <p className="text-sm text-muted">Загрузка...</p>
+        <h2 className="text-base font-semibold text-text">Засчитанные KPI-лиды</h2>
+        <p className="text-xs text-muted">
+          Почему засчитан: обоснование Groq + категории (ткань / ГП / Европа). Клиент открывается в
+          CRM.
+        </p>
+        {leadsLoading ? (
+          <p className="text-sm text-muted">Загрузка журнала…</p>
         ) : leads.length === 0 ? (
           <p className="text-sm text-muted">
-            За этот месяц в журнале ещё нет квалифицированных KPI-лидов. Запустите анализ
-            в Настройки → ИИ → KPI квалификация.
+            За {formatMonthLabel(month)} нет квалифицированных лидов. Запустите анализ в Настройки →
+            ИИ → KPI квалификация.
           </p>
         ) : (
           <ul className="divide-y divide-gray-100">
-            {leads.map((lead) => (
-              <li
-                key={lead.id}
-                className="flex flex-wrap items-center justify-between gap-2 py-2.5 text-sm"
-              >
-                <div>
-                  <p className="font-medium text-text">{lead.clientName}</p>
-                  <p className="text-xs text-muted">
-                    {lead.assignedToName} ·{' '}
-                    {(lead.categories?.length
-                      ? lead.categories
-                      : [lead.category]
-                    )
-                      .map((c) => LEAD_CATEGORIES[c])
-                      .join(' + ')}
-                  </p>
+            {leads.map((lead) => {
+              const client = clients.find((c) => c.id === lead.clientId)
+              const reason =
+                client?.kpiQualificationReason ||
+                (typeof lead.significantMoments === 'number' && lead.significantMoments >= 900
+                  ? 'Сделка в 1-м месяце работы — лид засчитывается сразу.'
+                  : 'Квалифицирован по журналу KPI.')
+              const cats = leadCats(lead)
+                .map((c) => LEAD_CATEGORIES[c])
+                .join(' + ')
+              return (
+                <li key={lead.id} className="py-3">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <Link
+                        to={`/crm?client=${lead.clientId}`}
+                        className="font-medium text-secondary hover:underline"
+                      >
+                        {lead.clientName}
+                      </Link>
+                      <p className="text-xs text-muted">
+                        {cats}
+                        {typeof lead.significantMoments === 'number'
+                          ? lead.significantMoments >= 900
+                            ? ' · сделка в 1-м месяце'
+                            : ` · ${lead.significantMoments} весомых шагов клиента`
+                          : ''}
+                      </p>
+                    </div>
+                    <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                      засчитан
+                    </span>
+                  </div>
+                  <p className="mt-1 text-sm leading-relaxed text-text">{reason}</p>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </Card>
+
+      <Card className="space-y-3">
+        <h2 className="text-base font-semibold text-text">Активные, но не засчитанные</h2>
+        <p className="text-xs text-muted">
+          Клиенты этого менеджера, у кого за месяц есть активность в CRM, но KPI-лид не прошёл.
+        </p>
+        {notCounted.length === 0 ? (
+          <p className="text-sm text-muted">Таких клиентов нет.</p>
+        ) : (
+          <ul className="divide-y divide-gray-100">
+            {notCounted.map((c) => (
+              <li key={c.id} className="py-3">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <Link
+                    to={`/crm?client=${c.id}`}
+                    className="font-medium text-secondary hover:underline"
+                  >
+                    {c.name}
+                  </Link>
+                  <span className="rounded-md bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800">
+                    не в факте
+                  </span>
                 </div>
-                <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
-                  {lead.month}
-                  {typeof lead.significantMoments === 'number'
-                    ? ` · ${lead.significantMoments >= 900 ? 'сделка' : `${lead.significantMoments} мом.`}`
-                    : ''}
-                </span>
+                <p className="mt-1 text-sm leading-relaxed text-muted">
+                  {c.kpiQualificationReason ||
+                    'Нет обоснования: анализ ещё не ставил отказ или клиент не дотянул до порога весомых шагов.'}
+                </p>
               </li>
             ))}
           </ul>
         )}
       </Card>
+
+      <Card className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-base font-semibold text-text">Блок 3 — бонусы от сделки</h2>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={() => patch({ dealCounts: applySuggestedDealCounts(suggestions) })}
+            disabled={suggestions.length === 0}
+          >
+            Подставить из CRM
+          </Button>
+        </div>
+        <p className="text-xs text-muted">
+          Суммы сделок в CRM часто в сумах — для диапазона $ числа ≥ 100 000 делятся на 12 500.
+          Проверьте каждую сделку: бонус только за нового клиента.
+        </p>
+        {suggestions.length > 0 && (
+          <ul className="space-y-2 rounded-lg bg-slate-50 p-3 text-sm">
+            {suggestions.map((s) => (
+              <li key={s.clientId}>
+                <Link to={`/crm?client=${s.clientId}`} className="font-medium text-secondary hover:underline">
+                  {s.clientName}
+                </Link>
+                <span className="text-muted">
+                  {' '}
+                  · {s.usd != null ? `${Math.round(s.usd).toLocaleString('ru-RU')} $` : 'нет $'}
+                  {s.date ? ` · ${s.date}` : ''}
+                  {s.note ? ` · ${s.note}` : ''}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[520px] text-left text-sm">
+            <thead>
+              <tr className="border-b border-gray-100 text-xs text-muted">
+                <th className="py-2 pr-2 font-medium">Условие</th>
+                <th className="py-2 pr-2 font-medium">Факт, шт</th>
+                <th className="py-2 pr-2 font-medium">За 1</th>
+                <th className="py-2 font-medium">Начислено</th>
+              </tr>
+            </thead>
+            <tbody>
+              {calc.dealRows.map((row) => (
+                <tr key={row.id} className="border-b border-gray-50">
+                  <td className="py-2 pr-2">{row.label}</td>
+                  <td className="py-2 pr-2">
+                    <input
+                      type="number"
+                      min={0}
+                      className="w-20 rounded-md border border-gray-200 px-2 py-1 text-sm"
+                      value={draft.dealCounts[row.id as DealBandId]}
+                      onChange={(e) =>
+                        patch({
+                          dealCounts: {
+                            ...draft.dealCounts,
+                            [row.id]: Number(e.target.value) || 0,
+                          },
+                        })
+                      }
+                    />
+                  </td>
+                  <td className="py-2 pr-2 text-muted">{formatKpiMoney(row.unitBonus)}</td>
+                  <td className="py-2 font-semibold">{formatKpiMoney(row.amount)}</td>
+                </tr>
+              ))}
+              <tr className="border-b border-gray-50">
+                <td className="py-2 pr-2">Повторный заказ · 0,8 % от инвойса (вручную)</td>
+                <td className="py-2 pr-2 text-muted" colSpan={2}>
+                  сумма бонуса, тыс сум
+                </td>
+                <td className="py-2">
+                  <input
+                    type="number"
+                    min={0}
+                    className="w-28 rounded-md border border-gray-200 px-2 py-1 text-sm"
+                    value={draft.repeatBonus}
+                    onChange={(e) => patch({ repeatBonus: Number(e.target.value) || 0 })}
+                  />
+                </td>
+              </tr>
+              {tpl.hasInstagram && (
+                <tr className="border-b border-gray-50">
+                  <td className="py-2 pr-2">Оборот Instagram (одна ступень)</td>
+                  <td className="py-2 pr-2" colSpan={2}>
+                    <select
+                      value={draft.instagramTier || ''}
+                      onChange={(e) =>
+                        patch({
+                          instagramTier: (e.target.value || null) as KpiPayrollInputs['instagramTier'],
+                        })
+                      }
+                      className="max-w-full rounded-md border border-gray-200 px-2 py-1 text-sm"
+                    >
+                      <option value="">нет бонуса</option>
+                      {INSTAGRAM_TIERS.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.label} → {formatKpiMoney(t.bonus)}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className="py-2 font-semibold">{formatKpiMoney(calc.instagramBonus)}</td>
+                </tr>
+              )}
+              <tr>
+                <td className="py-2.5 font-semibold" colSpan={3}>
+                  Итого блок 3
+                </td>
+                <td className="py-2.5 font-bold text-secondary">{formatKpiMoney(calc.block3Total)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      <Card className="space-y-3">
+        <h2 className="text-base font-semibold text-text">Чек-лист обязанностей (в окладе)</h2>
+        <p className="text-xs text-muted">
+          {dutiesDone} из {tpl.duties.length} — на сумму «на руки» не влияет, для 1:1.
+        </p>
+        <ul className="space-y-2">
+          {tpl.duties.map((d) => (
+            <li key={d.id} className="rounded-lg border border-gray-100 p-3">
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={Boolean(draft.dutyDone[d.id])}
+                  onChange={(e) =>
+                    patch({ dutyDone: { ...draft.dutyDone, [d.id]: e.target.checked } })
+                  }
+                />
+                <span>
+                  <span className="font-medium text-text">{d.title}</span>
+                  <span className="mt-0.5 block text-xs text-muted">{d.detail}</span>
+                </span>
+              </label>
+            </li>
+          ))}
+        </ul>
+      </Card>
+
+      <Card className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-lg font-bold text-text">На руки: {formatKpiMoney(calc.handsTotal)}</p>
+          <p className="text-xs text-muted">
+            {formatKpiMoney(calc.fixa)} + {formatKpiMoney(calc.block2Total)} +{' '}
+            {formatKpiMoney(calc.block3Total)}
+          </p>
+          {error && <p className="mt-1 text-xs text-danger">{error}</p>}
+          {savedOk && <p className="mt-1 text-xs text-emerald-700">{savedOk}</p>}
+        </div>
+        <Button type="button" onClick={() => void handleSave()} disabled={saving || loading}>
+          {saving ? 'Сохранение…' : 'Сохранить расчёт месяца'}
+        </Button>
+      </Card>
     </div>
+  )
+}
+
+function NumField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string
+  value: number
+  onChange: (v: number) => void
+}) {
+  return (
+    <label className="text-xs text-muted">
+      {label}
+      <input
+        type="number"
+        min={0}
+        className="mt-1 block w-28 rounded-md border border-gray-200 px-2 py-1.5 text-sm text-text"
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value) || 0)}
+      />
+    </label>
   )
 }
 
@@ -189,7 +608,7 @@ function StatChip({
   tone = 'default',
 }: {
   label: string
-  value: number
+  value: string
   tone?: 'default' | 'secondary'
 }) {
   const tones = {
@@ -199,7 +618,7 @@ function StatChip({
   return (
     <div className={`rounded-xl px-3 py-2.5 shadow-sm ${tones[tone]}`}>
       <p className="text-[11px] font-medium uppercase tracking-wide opacity-70">{label}</p>
-      <p className="mt-0.5 text-xl font-bold">{value}</p>
+      <p className="mt-0.5 text-lg font-bold leading-tight">{value}</p>
     </div>
   )
 }

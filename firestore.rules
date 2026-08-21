@@ -157,6 +157,26 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
+    function canWriteCatalogue() {
+      return isAdmin()
+        || hasPosition('designer')
+        || hasPosition('head')
+        || hasPosition('leads_manager_1')
+        || hasPosition('leads_manager_2');
+    }
+
+    match /catalogues/{catalogueId} {
+      allow read: if true;
+      allow create: if canWriteCatalogue();
+      allow update: if canWriteCatalogue()
+        || (
+          resource.data.isActive == true
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['viewCount'])
+          && request.resource.data.viewCount == resource.data.viewCount + 1
+        );
+      allow delete: if isAdmin() || hasPosition('head');
+    }
+
     match /deletion_requests/{requestId} {
       allow read: if isAdmin() || resource.data.requestedBy == request.auth.uid;
       allow create: if isSignedIn()

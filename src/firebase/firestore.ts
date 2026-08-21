@@ -4,6 +4,7 @@ import {
   setDoc,
   collection,
   query,
+  getDocs,
   onSnapshot,
   addDoc,
   updateDoc,
@@ -98,6 +99,14 @@ export async function createSubdocument<T extends Record<string, unknown>>(
     createdAt: serverTimestamp(),
   })
   return ref.id
+}
+
+export async function queryCollection<T>(
+  collectionName: string,
+  constraints: QueryConstraint[],
+): Promise<T[]> {
+  const snap = await getDocs(query(collection(db, collectionName), ...constraints))
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as T)
 }
 
 /** Create-or-skip by fixed id (for notification dedupe). */

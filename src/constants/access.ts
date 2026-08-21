@@ -18,6 +18,7 @@ export type AppSection =
   | 'analytics'
   | 'requests'
   | 'settings'
+  | 'catalogue'
 
 /**
  * Who sees what by default (должность).
@@ -42,6 +43,7 @@ export const SECTION_ACCESS: Record<AppSection, Position[] | 'all' | 'admin'> = 
   milestones: ['dev_manager', 'head'],
   analytics: 'admin',
   requests: 'admin',
+  catalogue: ['designer', 'head', 'leads_manager_1', 'leads_manager_2'],
 }
 
 /** Все пункты меню — админ может включать/выключать каждый. */
@@ -60,6 +62,7 @@ export const CONFIGURABLE_SECTIONS: AppSection[] = [
   'milestones',
   'analytics',
   'requests',
+  'catalogue',
   'settings',
 ]
 
@@ -79,6 +82,7 @@ export const SECTION_LABELS: Record<AppSection, string> = {
   milestones: 'Подзадачи',
   analytics: 'Аналитика',
   requests: 'Заявки',
+  catalogue: 'Каталог и КП',
   settings: 'Настройки',
 }
 
@@ -98,6 +102,7 @@ export const SECTION_PATHS: Record<AppSection, string> = {
   milestones: '/subtasks',
   analytics: '/analytics',
   requests: '/requests',
+  catalogue: '/catalogue',
   settings: '/settings',
 }
 

@@ -50,6 +50,7 @@ const SECTIONS = new Set([
   'milestones',
   'analytics',
   'requests',
+  'catalogue',
   'settings',
 ])
 

@@ -44,6 +44,7 @@ import { calculateActiveMonths, resolveOpenedDateFromClient } from '@/utils/date
 import { canSeeLeadActivity, resolveActivityStatus, resolveOpenedMonth } from '@/utils/leadActivity'
 import { useAiActivityConfig } from '@/hooks/useAiActivityConfig'
 import { groqActivityIsCurrent, kpiMonthIsCurrent } from '@/utils/groqLeadActivity'
+import { ClientKpTab } from '@/components/crm/ClientKpTab'
 
 interface ClientDetailProps {
   client: Client | null
@@ -196,7 +197,7 @@ export function ClientDetail({
   const [salesMemberId, setSalesMemberId] = useState('')
   const [customWait, setCustomWait] = useState('')
   const [waitFollowUpDate, setWaitFollowUpDate] = useState(addDaysISO(todayISO(), 5))
-  const [detailTab, setDetailTab] = useState<'info' | 'tasks' | 'notes' | 'history'>('tasks')
+  const [detailTab, setDetailTab] = useState<'info' | 'tasks' | 'notes' | 'history' | 'kp'>('tasks')
   const [nextStepText, setNextStepText] = useState('')
   const [nextStepDeadline, setNextStepDeadline] = useState('')
   const [visitDate, setVisitDate] = useState('')
@@ -637,6 +638,7 @@ export function ClientDetail({
                 ['tasks', 'Задачи'],
                 ['info', 'Клиент'],
                 ['notes', 'Комментарии'],
+                ['kp', 'КП'],
                 ['history', 'История'],
               ] as const
             ).map(([key, label]) => (
@@ -1203,6 +1205,8 @@ export function ClientDetail({
           </section>
           </>
           )}
+
+          {detailTab === 'kp' && client && <ClientKpTab client={client} />}
 
           {detailTab === 'history' && (
           <>

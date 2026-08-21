@@ -6,6 +6,7 @@ const { getAuth } = require('firebase-admin/auth')
 const { getFirestore, FieldValue } = require('firebase-admin/firestore')
 const { runDailyAiLeadAnalysis } = require('./groqAnalyzer')
 const { runActivityAnalysis } = require('./leadActivityAnalyzer')
+const { incrementCatalogueViewBySlug } = require('./catalogueViews')
 
 initializeApp()
 
@@ -363,3 +364,15 @@ exports.runActivityAnalysisNow = onCall(
     })
   },
 )
+
+exports.incrementCatalogueView = onCall(
+  { region: 'us-central1', cors: true },
+  async (request) => {
+    const slug = String(request.data?.slug || '').trim()
+    if (!slug) {
+      throw new HttpsError('invalid-argument', 'Не указан slug')
+    }
+    return incrementCatalogueViewBySlug(slug)
+  },
+)
+

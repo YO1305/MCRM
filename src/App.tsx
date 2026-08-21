@@ -21,6 +21,8 @@ import { Reports } from '@/pages/Reports'
 import { Requests } from '@/pages/Requests'
 import { Settings } from '@/pages/Settings'
 import { AiSettings } from '@/pages/settings/AiSettings'
+import { Catalogue } from '@/pages/Catalogue'
+import { PublicCatalogue } from '@/pages/PublicCatalogue'
 
 export default function App() {
   return (
@@ -28,6 +30,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/c/:slug" element={<PublicCatalogue />} />
 
           <Route element={<PrivateRoute />}>
             <Route element={<Layout />}>
@@ -57,6 +60,10 @@ export default function App() {
 
               <Route element={<SectionRoute section="design" />}>
                 <Route path="/design" element={<DesignRequests />} />
+              </Route>
+
+              <Route element={<SectionRoute section="catalogue" />}>
+                <Route path="/catalogue" element={<Catalogue />} />
               </Route>
 
               <Route element={<SectionRoute section="showroom" />}>

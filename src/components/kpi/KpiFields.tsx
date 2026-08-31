@@ -11,7 +11,7 @@ export function NumField({
       <input
         type="number"
         step="any"
-        className="rounded-lg border border-gray-200 bg-surface px-3 py-2 text-sm font-normal outline-none focus:border-secondary"
+        className="rounded-lg border border-gray-200 bg-surface px-3 py-2 text-sm font-normal outline-none focus:border-secondary disabled:bg-background disabled:text-muted"
         {...props}
       />
     </label>
@@ -31,9 +31,11 @@ export function Money({ value }: { value: number }) {
 export function CertChecks({
   value,
   onChange,
+  disabled,
 }: {
   value: CertificateFlags
   onChange: (next: CertificateFlags) => void
+  disabled?: boolean
 }) {
   const items: { key: keyof CertificateFlags; label: string }[] = [
     { key: 'iso', label: 'ISO (300)' },
@@ -49,6 +51,7 @@ export function CertChecks({
           <input
             type="checkbox"
             checked={value[item.key]}
+            disabled={disabled}
             onChange={(e) => onChange({ ...value, [item.key]: e.target.checked })}
           />
           {item.label}

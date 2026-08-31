@@ -182,6 +182,14 @@ export function calcAssistant(input: AssistantPayrollInput) {
   return { fixa, certs, subsidy, extra: certs + subsidy, total: fixa + certs + subsidy }
 }
 
+export function leadKpiRatios(facts: { fabric: number; finished: number; europe: number }) {
+  return {
+    fabric: safeRatio(facts.fabric, 5),
+    gp: safeRatio(facts.finished, 5),
+    europe: safeRatio(facts.europe, 3),
+  }
+}
+
 export function formatPct(ratio: number): string {
   return `${Math.round((ratio || 0) * 1000) / 10} %`
 }

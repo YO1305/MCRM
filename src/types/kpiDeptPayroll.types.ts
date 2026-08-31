@@ -52,6 +52,10 @@ export interface HeadPayrollInput {
   exhibitions: ExhibitionRow[]
   certificates: CertificateFlags
   duties: DutyRow[]
+  /** true = не подтягивать с вкладки Айгуль / Кундуз */
+  teamLeadsManual?: boolean
+  /** true = не подтягивать сертификаты с вкладки ассистента */
+  certificatesManual?: boolean
 }
 
 export interface DesignerPayrollInput {

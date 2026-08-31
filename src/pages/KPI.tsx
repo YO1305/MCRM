@@ -9,6 +9,10 @@ import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { KpiExplanation } from '@/components/kpi/KpiExplanation'
 import { KpiTeamGuide } from '@/components/kpi/KpiTeamGuide'
+import { KpiPasswordGate, isKpiUnlocked } from '@/components/kpi/KpiPasswordGate'
+import { KpiHeadPanel } from '@/components/kpi/KpiHeadPanel'
+import { KpiDesignerPanel } from '@/components/kpi/KpiDesignerPanel'
+import { KpiAssistantPanel } from '@/components/kpi/KpiAssistantPanel'
 import { LEAD_CATEGORIES } from '@/constants/clientMeta'
 import {
   KPI_ROLE_TEMPLATES,
@@ -48,33 +52,78 @@ function leadCats(lead: { categories?: LeadCategory[]; category?: LeadCategory }
   return lead.category ? [lead.category] : []
 }
 
+type DeptTab = 'leads' | 'head' | 'designer' | 'assistant'
+
 export function KPI() {
-  const { user, isAdmin } = useAuth()
-  const { users } = useUsers(isAdmin)
+  const { user } = useAuth()
+  const { users } = useUsers(true)
   const { clients } = useClients()
   const [month, setMonth] = useState(getCurrentMonth())
   const [role, setRole] = useState<KpiPayrollRole>('aygul')
+  const [deptTab, setDeptTab] = useState<DeptTab>('leads')
+  const [unlocked, setUnlocked] = useState(isKpiUnlocked)
 
-  if (!isAdmin) {
-    return (
-      <div className="mx-auto max-w-lg py-16 text-center">
-        <h1 className="text-xl font-bold text-text">KPI недоступен</h1>
-        <p className="mt-2 text-sm text-muted">Раздел зарплаты KPI виден только администратору.</p>
-      </div>
-    )
+  if (!unlocked) {
+    return <KpiPasswordGate onUnlock={() => setUnlocked(true)} />
   }
 
   return (
-    <KpiPayrollPage
-      month={month}
-      setMonth={setMonth}
-      role={role}
-      setRole={setRole}
-      users={users}
-      clients={clients}
-      adminId={user?.id || ''}
-      adminName={user?.name || ''}
-    />
+    <div className="space-y-4">
+      <div>
+        <h1 className="text-2xl font-bold text-text">KPI отдела маркетинга</h1>
+        <p className="mt-1 text-sm text-muted">
+          Пароль уже введён на эту сессию. Раздел виден только начальнику и админу.
+        </p>
+      </div>
+      <select
+        value={month}
+        onChange={(e) => setMonth(e.target.value)}
+        className="rounded-lg border border-gray-200 bg-surface px-3 py-2 text-sm outline-none focus:border-secondary"
+      >
+        {monthOptions().map((m) => (
+          <option key={m} value={m}>
+            {formatMonthLabel(m)}
+          </option>
+        ))}
+      </select>
+      <div className="flex flex-wrap gap-2">
+        {(
+          [
+            ['leads', 'Айгуль / Кундуз'],
+            ['head', 'Начальник'],
+            ['designer', 'Дизайнер'],
+            ['assistant', 'Ассистент'],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            className={`rounded-lg px-3 py-1.5 text-sm ${
+              deptTab === id ? 'bg-secondary text-white' : 'bg-background text-muted'
+            }`}
+            onClick={() => setDeptTab(id)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {deptTab === 'head' && <KpiHeadPanel month={month} />}
+      {deptTab === 'designer' && <KpiDesignerPanel month={month} />}
+      {deptTab === 'assistant' && <KpiAssistantPanel month={month} />}
+      {deptTab === 'leads' && (
+        <KpiPayrollPage
+          month={month}
+          setMonth={setMonth}
+          role={role}
+          setRole={setRole}
+          users={users}
+          clients={clients}
+          adminId={user?.id || ''}
+          adminName={user?.name || ''}
+        />
+      )}
+    </div>
   )
 }
 

@@ -33,7 +33,7 @@ export const SECTION_ACCESS: Record<AppSection, Position[] | 'all' | 'admin'> = 
   settings: 'all',
   crm: ['leads_manager_1', 'leads_manager_2', 'operator', 'head'],
   contacts: ['leads_manager_1', 'leads_manager_2'],
-  kpi: 'admin',
+  kpi: ['head'],
   design: ['designer', 'head'],
   showroom: ['leads_manager_2', 'head'],
   labels: ['leads_manager_1', 'leads_manager_2'],
@@ -117,9 +117,11 @@ export function canAccessSection(
     enabledSections?: AppSection[] | null
   },
 ): boolean {
+  if (section === 'kpi') {
+    return opts.isAdmin || opts.position === 'head'
+  }
+
   if (opts.isAdmin) return true
-  // Зарплатный KPI видит только админ, даже если пункт когда-то включили в меню сотрудника.
-  if (section === 'kpi') return false
 
   const custom = opts.enabledSections
   if (custom && Array.isArray(custom)) {

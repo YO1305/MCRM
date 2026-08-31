@@ -105,6 +105,7 @@ service cloud.firestore {
 
     match /clients/{clientId} {
       allow read: if isAdmin()
+        || hasPosition('head')
         || resource.data.assignedTo == request.auth.uid
         || resource.data.salesManagerId == request.auth.uid;
       allow create: if isSignedIn();
@@ -148,13 +149,15 @@ service cloud.firestore {
     }
 
     match /kpi_lead_log/{logId} {
-      allow read: if isAdmin() || resource.data.assignedTo == request.auth.uid;
+      allow read: if isAdmin()
+        || hasPosition('head')
+        || resource.data.assignedTo == request.auth.uid;
       allow create: if false;
       allow update, delete: if isAdmin();
     }
 
     match /kpi_payroll/{docId} {
-      allow read, write: if isAdmin();
+      allow read, write: if isAdmin() || hasPosition('head');
     }
 
     function canWriteCatalogue() {

@@ -109,7 +109,7 @@ export function Reports() {
     if (!selectedUser) return
     setExporting(true)
     try {
-      exportMonthlyWorkReport({
+      await exportMonthlyWorkReport({
         employeeName: selectedUser.name,
         positionLabel: POSITION_LABELS[selectedUser.position] || selectedUser.position,
         month,

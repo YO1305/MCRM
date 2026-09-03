@@ -1,4 +1,3 @@
-import * as XLSX from 'xlsx'
 import type { PriceRow } from '@/types/catalogue.types'
 
 function cell(value: unknown): string {
@@ -9,7 +8,9 @@ function cell(value: unknown): string {
   return String(value).trim()
 }
 
-export function parseExcelPrices(file: File): Promise<PriceRow[]> {
+export async function parseExcelPrices(file: File): Promise<PriceRow[]> {
+  const XLSX = await import('xlsx')
+
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = (e) => {

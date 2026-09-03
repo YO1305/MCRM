@@ -194,8 +194,8 @@ export function useSmmPayments(month: string, cycle: SmmPaymentCycle) {
     await removeDocument('smm_payments', id)
   }
 
-  function exportExcel() {
-    exportSmmPaymentsExcel(payments, month, cycle)
+  async function exportExcel() {
+    await exportSmmPaymentsExcel(payments, month, cycle)
   }
 
   const summary = useMemo(() => {

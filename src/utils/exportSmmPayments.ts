@@ -1,12 +1,12 @@
-import * as XLSX from 'xlsx'
 import type { SmmPayment, SmmPaymentCycle } from '@/types/smmPayment.types'
 import { CYCLE_LABELS } from '@/types/smmPayment.types'
 
-export function exportSmmPaymentsExcel(
+export async function exportSmmPaymentsExcel(
   payments: SmmPayment[],
   month: string,
   cycle: SmmPaymentCycle,
 ) {
+  const XLSX = await import('xlsx')
   const sorted = [...payments].sort(
     (a, b) =>
       a.teamName.localeCompare(b.teamName, 'ru') ||

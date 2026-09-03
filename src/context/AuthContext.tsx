@@ -228,8 +228,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       void applyProfile(firebaseUser, requestId)
     })
 
+    const failSafe = window.setTimeout(() => {
+      setLoading((prev) => (prev ? false : prev))
+    }, 8000)
+
     return () => {
       clearRetry()
+      window.clearTimeout(failSafe)
       unsubscribe()
     }
   }, [applyProfile, clearViewAs])

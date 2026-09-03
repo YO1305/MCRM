@@ -1,4 +1,3 @@
-import * as XLSX from 'xlsx'
 import type { Task } from '@/types/task.types'
 
 export interface MonthlyReportRow {
@@ -47,12 +46,13 @@ export function filterMonthlyReportTasks(tasks: Task[], month: string): Task[] {
     .sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''))
 }
 
-export function exportMonthlyWorkReport(opts: {
+export async function exportMonthlyWorkReport(opts: {
   employeeName: string
   positionLabel: string
   month: string
   rows: MonthlyReportRow[]
 }) {
+  const XLSX = await import('xlsx')
   const { label } = monthBounds(opts.month)
   const title = 'ОЙДА БАЖАРИЛГАН ИШЛАР БЎЙИЧА ҲИСОБОТ'
 

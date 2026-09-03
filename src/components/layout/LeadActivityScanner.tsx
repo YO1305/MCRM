@@ -47,12 +47,15 @@ export function LeadActivityScanner() {
     }
 
     void (async () => {
+      let writes = 0
+      const maxWrites = 25
       for (const client of clients) {
         if (isLeadFinal(client.stage)) continue
         const fields = buildActivityFields(client, thresholds)
-        if (activityFieldsChanged(client, fields)) {
+        if (activityFieldsChanged(client, fields) && writes < maxWrites) {
           try {
             await updateDocument('clients', client.id, fields)
+            writes += 1
           } catch (err) {
             console.error('lead activity update failed', err)
           }

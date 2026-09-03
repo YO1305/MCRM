@@ -157,7 +157,7 @@ function entryDay(entry: { date?: string; createdAt?: unknown }): string {
   return ''
 }
 
-const ABANDONED_SILENCE_DAYS = 10
+const ABANDONED_SILENCE_DAYS = 14
 
 function monthCutoffDay(month: string, today = new Date()): string {
   if (!/^\d{4}-\d{2}$/.test(month)) return ''

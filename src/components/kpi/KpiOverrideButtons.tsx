@@ -23,14 +23,26 @@ export function KpiOverrideButtons({
   async function run(fn: () => Promise<void>) {
     setBusy(true)
     setErr('')
-    try {
-      await fn()
-      onDone?.()
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Не удалось сохранить')
-    } finally {
-      setBusy(false)
+    let last = ''
+    for (let i = 0; i < 4; i += 1) {
+      try {
+        await fn()
+        onDone?.()
+        setBusy(false)
+        return
+      } catch (e) {
+        last = e instanceof Error ? e.message : 'Не удалось сохранить'
+        if (!/RESOURCE_EXHAUSTED|Quota|перегруж/i.test(last) || i === 3) break
+        setErr('База занята, пробую ещё раз…')
+        await new Promise((r) => setTimeout(r, 1500 * (i + 1)))
+      }
     }
+    setErr(
+      /RESOURCE_EXHAUSTED|Quota|перегруж/i.test(last)
+        ? 'База перегружена. Подождите минуту и нажмите «Засчитать» ещё раз.'
+        : last,
+    )
+    setBusy(false)
   }
 
   return (

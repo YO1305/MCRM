@@ -440,7 +440,7 @@ function KpiPayrollPage({
                         {typeof lead.significantMoments === 'number'
                           ? lead.significantMoments >= 900
                             ? ' · сделка в 1-м месяце'
-                            : ` · ${lead.significantMoments} весомых шагов клиента`
+                            : ` · ${lead.significantMoments} шагов по лиду`
                           : ''}
                       </p>
                     </div>
@@ -480,7 +480,7 @@ function KpiPayrollPage({
                 </div>
                 <p className="mt-1 text-sm leading-relaxed text-muted">
                   {c.kpiQualificationReason ||
-                    'Нет обоснования: анализ ещё не ставил отказ или клиент не дотянул до порога весомых шагов.'}
+                    'Нет обоснования: анализ ещё не ставил отказ или не набралось шагов менеджера по клиенту.'}
                 </p>
               </li>
             ))}

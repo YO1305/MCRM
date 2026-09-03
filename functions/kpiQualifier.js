@@ -1,75 +1,17 @@
 const { FieldValue } = require('firebase-admin/firestore')
+const { countKpiLeadSteps, describeKpiSteps } = require('./kpiLeadSteps')
 
 const FINAL_STAGES = new Set(['deal', 'rejected', 'failed', 'abandoned'])
 const DEFAULT_MIN_MOMENTS = 3
 
-const STAGE_LABELS = {
-  contact: 'Контакт',
-  negotiation: 'Переговоры',
-  proposal: 'КП отправлено',
-  brief: 'ТЗ получено',
-  contract: 'Договор',
-  deal: 'Сделка',
-  rejected: 'Отказ',
-  failed: 'Провалено',
-  abandoned: 'Заброшено',
-}
+const DEFAULT_KPI_PROMPT = `Отбор KPI считает программа, не ИИ.
 
-const HISTORY_TYPE_LABELS = {
-  note: 'Комментарий',
-  call: 'Итог звонка',
-  sales_note: 'Комментарий продаж',
-  sales_assigned: 'Назначен менеджер продаж',
-  stage_change: 'Смена этапа',
-  wait_status: 'Статус ожидания',
-  next_step: 'Следующий шаг',
-  visit: 'Визит',
-  samples_sent: 'Отправка образцов',
-}
-
-const DEFAULT_KPI_PROMPT = `Ты аналитик CRM текстильной компании BAHMAL HOME (Узбекистан).
-
-По журналу за месяц посчитай, сколько раз КЛИЕНТ сделал конкретный шаг вперёд.
-Это журнал менеджера, не чат: если менеджер написал «клиент запросил образцы артикула 40/1» — это действие КЛИЕНТА.
-
-ДАННЫЕ:
-- Имя: {clientName}
-- Категория: {category}
-- Этап: {stage}
-- Статус лида: {activityLabel}
-- Месяц работы: {activeMonthsCount} из 3
-
-ЖУРНАЛ:
-{monthHistory}
-
-ВЕСОМЫЙ МОМЕНТ (клиент):
-- запросил КП / коммерческое на конкретный артикул (именно КЛИЕНТ запросил, не менеджер отправила)
-- запросил образцы конкретных артикулов
-- прислал ТЗ / спецификацию
-- запросил параметры (плотность, состав, ширина)
-- запросил условия договора или поставки
-- запросил счёт или реквизиты
-- подтвердил получение образцов
-- дал обратную связь по образцам / выкрасу
-- согласовал объём или сроки
-- подтвердил готовность к следующему шагу
-- одобрил цвет, артикул или спецификацию
-- запросил договор, согласовал спецификацию заказа
-- предоплата, подпись, явно движется вперёд
-
-НЕ СЧИТАТЬ (это работа менеджера: лид АКТИВНЫЙ, но не KPI):
-- менеджер отправила КП / коммерческое / прайс / каталог / «написала» / «шаг выполнен»
-- этап «КП отправлено» сам по себе
-- менеджер подготовила образцы, а клиент получение не подтвердил
-- клиент спросил цену в общем или «что есть в ассортименте»
-- «подумаем», «позже», «на паузе», «ждём решения» без действия
-
-Считать шаг только если в тексте есть действие КЛИЕНТА: запросила / подтвердила / согласовала / прислала ТЗ. «Я отправила КП Шахнозе» = 0 шагов клиента.
-
-qualifies = true только если significantMoments >= {minKpiMoments}
-
-JSON:
-{"significantMoments":0,"qualifies":false,"reason":"1-2 предложения на русском"}`
+Правило:
+1) Активный = в Истории месяца есть работа менеджера.
+2) KPI-лид = активный + не старше 3 месяцев + минимум {minKpiMoments} шагов менеджера по этому клиенту (КП, звонок, образцы, этап, комментарий, визит).
+3) Сделка в 1-м месяце = сразу.
+4) «Клиент создан» и «на паузе» не считаются.
+5) Фразы от клиента не нужны: «отправила КП Шахнозе» — это шаг.`
 
 function resolveActiveMonths(client, month) {
   const raw = client.openedDate || client.openedMonth || ''
@@ -87,56 +29,11 @@ function leadCategories(client) {
   return client.category ? [client.category] : ['fabric']
 }
 
-function formatHistory(history) {
-  if (!history?.length) return '- История пуста'
-  return history
-    .map((h) => {
-      const type = HISTORY_TYPE_LABELS[h.type] || h.type || 'запись'
-      return `- ${h.date} — ${type}: ${h.text}`
-    })
-    .join('\n')
-}
-
-function resolveKpiPrompt(config) {
-  const stored = String(config?.kpiPrompt || '')
-  const legacy =
-    !stored.trim() ||
-    !/отправил\w*\s+кп|кп\s*\/\s*коммерческ|этап «кп отправлено»/i.test(stored)
-  return legacy ? DEFAULT_KPI_PROMPT : stored
-}
-  return String(template || DEFAULT_KPI_PROMPT)
-    .split('{clientName}')
-    .join(input.clientName)
-    .split('{category}')
-    .join(input.category)
-    .split('{stage}')
-    .join(input.stage)
-    .split('{activityLabel}')
-    .join(input.activityLabel)
-    .split('{activeMonthsCount}')
-    .join(String(input.activeMonthsCount))
-    .split('{minKpiMoments}')
-    .join(String(input.minKpiMoments))
-    .split('{monthHistory}')
-    .join(input.monthHistory)
-}
-
-function parseKpiResult(raw, minMoments) {
-  const fallback = {
-    significantMoments: 0,
-    qualifies: false,
-    reason: 'Не удалось разобрать ответ Groq',
-  }
-  try {
-    const match = String(raw || '').match(/\{[\s\S]*\}/)
-    const obj = JSON.parse(match ? match[0] : '{}')
-    const moments = Math.max(0, Math.min(10, Number(obj.significantMoments) || 0))
-    const qualifies = obj.qualifies === true && moments >= minMoments
-    const reason = String(obj.reason || fallback.reason).slice(0, 400)
-    return { significantMoments: moments, qualifies, reason }
-  } catch {
-    return fallback
-  }
+function scoreFromHistory(history, minMoments) {
+  const significantMoments = countKpiLeadSteps(history)
+  const qualifies = significantMoments >= minMoments
+  const reason = describeKpiSteps(history, minMoments)
+  return { significantMoments, qualifies, reason }
 }
 
 async function findMonthLog(db, clientId, month) {
@@ -175,40 +72,18 @@ async function writeKpiLeadLog(db, client, significantMoments, month, activeMont
     fixedAt: FieldValue.serverTimestamp(),
     stage: client.stage || '',
     activeMonthsCount,
-    source: 'groq_kpi',
+    source: 'journal_steps',
   })
   return { wrote: true }
 }
 
-async function groqQualify(groq, prompt) {
-  try {
-    const completion = await groq.chat.completions.create({
-      model: 'llama-3.1-8b-instant',
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: 160,
-      temperature: 0.1,
-      response_format: { type: 'json_object' },
-    })
-    return completion.choices[0]?.message?.content?.trim() || ''
-  } catch (error) {
-    console.error('KPI Groq json_object failed, retry', error?.message || error)
-    const completion = await groq.chat.completions.create({
-      model: 'llama-3.1-8b-instant',
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: 160,
-      temperature: 0.1,
-    })
-    return completion.choices[0]?.message?.content?.trim() || ''
-  }
-}
-
 /**
- * Level 2 KPI: only after the lead is active this month (or fast deal in month 1).
+ * Level 2 KPI: after the lead is active this month (or fast deal in month 1).
+ * Counts manager steps on the lead from CRM history. Groq is not used.
  */
-async function qualifyLeadForKpi(db, groq, client, history, config, month, options = {}) {
+async function qualifyLeadForKpi(db, _groq, client, history, config, month, options = {}) {
   const minMoments = Math.max(1, Number(config.minKpiMoments) || DEFAULT_MIN_MOMENTS)
   const months = resolveActiveMonths(client, month)
-  const promptTemplate = resolveKpiPrompt(config)
 
   if (months > 3) {
     await updateClientKpi(db, client.id, {
@@ -257,61 +132,29 @@ async function qualifyLeadForKpi(db, groq, client, history, config, month, optio
     return { qualifies: false, skipped: 'not_active', activeMonthsCount: months }
   }
 
-  const input = {
-    clientName: client.name || '',
-    category: leadCategories(client)
-      .map((c) => ({ fabric: 'ткань', finished: 'ГП', europe: 'Европа' })[c] || c)
-      .join(', ') || 'не указана',
-    stage: STAGE_LABELS[client.stage] || client.stage || '',
-    activityLabel: client.activityLabel || '',
-    activeMonthsCount: months,
-    minKpiMoments: minMoments,
-    monthHistory: formatHistory(history),
+  const parsed = scoreFromHistory(history || [], minMoments)
+  await updateClientKpi(db, client.id, {
+    kpiQualified: parsed.qualifies,
+    kpiQualifiedMonth: month,
+    kpiSignificantMoments: parsed.significantMoments,
+    kpiQualificationReason: parsed.reason,
+  })
+  if (parsed.qualifies) {
+    await writeKpiLeadLog(db, client, parsed.significantMoments, month, months)
   }
-  const prompt = buildKpiPrompt(promptTemplate, input)
-
-  try {
-    const raw = await groqQualify(groq, prompt)
-    const parsed = parseKpiResult(raw, minMoments)
-    await updateClientKpi(db, client.id, {
-      kpiQualified: parsed.qualifies,
-      kpiQualifiedMonth: month,
-      kpiSignificantMoments: parsed.significantMoments,
-      kpiQualificationReason: parsed.reason,
-    })
-    if (parsed.qualifies) {
-      await writeKpiLeadLog(db, client, parsed.significantMoments, month, months)
-    }
-    return { ...parsed, activeMonthsCount: months }
-  } catch (error) {
-    console.error(`KPI qualification error for ${client.id}:`, error)
-    return { error: error?.message || String(error), activeMonthsCount: months }
-  }
+  return { ...parsed, activeMonthsCount: months }
 }
 
-async function testKpiQualification(db, groq, client, history, config, month) {
+async function testKpiQualification(_db, _groq, client, history, config, month) {
   const minMoments = Math.max(1, Number(config.minKpiMoments) || DEFAULT_MIN_MOMENTS)
   const months = resolveActiveMonths(client, month)
-  const input = {
-    clientName: client.name || '',
-    category: leadCategories(client)
-      .map((c) => ({ fabric: 'ткань', finished: 'ГП', europe: 'Европа' })[c] || c)
-      .join(', ') || 'не указана',
-    stage: STAGE_LABELS[client.stage] || client.stage || '',
-    activityLabel: client.activityLabel || 'не указан',
-    activeMonthsCount: months,
-    minKpiMoments: minMoments,
-    monthHistory: formatHistory(history),
-  }
-  const prompt = buildKpiPrompt(resolveKpiPrompt(config), input)
-  const raw = await groqQualify(groq, prompt)
-  const parsed = parseKpiResult(raw, minMoments)
+  const parsed = scoreFromHistory(history || [], minMoments)
   return {
     ...parsed,
     activeMonthsCount: months,
     minKpiMoments: minMoments,
     clientName: client.name,
-    prompt,
+    prompt: DEFAULT_KPI_PROMPT.split('{minKpiMoments}').join(String(minMoments)),
   }
 }
 
@@ -321,6 +164,4 @@ module.exports = {
   qualifyLeadForKpi,
   testKpiQualification,
   resolveActiveMonths,
-  parseKpiResult,
-  buildKpiPrompt,
 }

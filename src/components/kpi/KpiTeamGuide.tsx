@@ -105,13 +105,13 @@ export function KpiTeamGuide({
                   typeof c.kpiSignificantMoments === 'number'
                     ? c.kpiSignificantMoments >= 900
                       ? ' Сделка в 1-м месяце.'
-                      : ` Весомых шагов клиента: ${c.kpiSignificantMoments}.`
+                      : ` Шагов по лиду: ${c.kpiSignificantMoments}.`
                     : ''
                 }`,
               ),
             )
             .join(''),
-          'Ступень 1 пройдена (есть работа в истории) и ступень 2 тоже (3 шага клиента или сделка в 1-м месяце).',
+          'Ступень 1 пройдена (есть работа в истории) и ступень 2 тоже (3 шага менеджера по клиенту или сделка в 1-м месяце).',
         )}
         ${table(
           'Активные, которые в KPI не пошли',
@@ -120,7 +120,7 @@ export function KpiTeamGuide({
               clientRowHtml(
                 c,
                 c.kpiQualificationReason ||
-                  'Работа менеджера есть, но клиент не набрал весомых шагов (или 4-й месяц, или анализ ещё не закрыл отказ).',
+                  'Работа есть, но меньше 3 шагов менеджера по клиенту (или 4-й месяц, или анализ ещё не закрыл отказ).',
               ),
             )
             .join(''),
@@ -209,7 +209,7 @@ export function KpiTeamGuide({
               typeof c.kpiSignificantMoments === 'number'
                 ? c.kpiSignificantMoments >= 900
                   ? ' Сделка в 1-м месяце.'
-                  : ` Шагов клиента: ${c.kpiSignificantMoments}.`
+                  : ` Шагов по лиду: ${c.kpiSignificantMoments}.`
                 : ''
             }`
           }
@@ -222,7 +222,7 @@ export function KpiTeamGuide({
           badgeClass="bg-amber-50 text-amber-800"
           reason={(c) =>
             c.kpiQualificationReason ||
-            'Работа в истории есть. Клиент не набрал 3 весомых шага, либо 4-й месяц, либо квалификация ещё не записала отказ.'
+            'Работа в истории есть. Меньше 3 шагов менеджера по клиенту, либо 4-й месяц, либо анализ ещё не закрыл отказ.'
           }
         />
         <ExampleList

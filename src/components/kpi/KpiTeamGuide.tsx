@@ -161,8 +161,15 @@ export function KpiTeamGuide({
             <p className="mt-1 text-sm text-muted">{TEAM_GUIDE_INTRO}</p>
           </div>
           <div className="flex flex-wrap gap-2 print:hidden">
+            <a
+              href="/Kak_otbor_aktivnost_i_lidy.doc"
+              download="Kak_otbor_aktivnost_i_kpi_lid.doc"
+              className="inline-flex items-center rounded-lg bg-secondary px-3 py-2 text-sm font-medium text-white"
+            >
+              Скачать полную инструкцию Word
+            </a>
             <Button type="button" variant="secondary" onClick={() => downloadWord()}>
-              Скачать Word с примерами месяца
+              Word с примерами этого месяца
             </Button>
             <Button type="button" variant="ghost" onClick={() => window.print()}>
               Печать
@@ -170,8 +177,8 @@ export function KpiTeamGuide({
           </div>
         </div>
         <p className="text-xs text-muted">
-          Файл Word содержит полный текст правил и реальные имена клиентов за {formatMonthLabel(month)}.
-          Правила без имён также лежат здесь:{' '}
+          Файл «полная инструкция» — все статусы, типы записей и исходы без имён клиентов.
+          «Примеры месяца» добавляет живые карточки за {formatMonthLabel(month)}. Правила также:{' '}
           <a className="text-secondary underline" href="/kak-otbirayutsya-lidy.html" target="_blank" rel="noreferrer">
             kak-otbirayutsya-lidy.html
           </a>

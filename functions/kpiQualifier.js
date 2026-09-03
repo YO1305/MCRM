@@ -2,16 +2,19 @@ const { FieldValue } = require('firebase-admin/firestore')
 const { evaluateKpiLead } = require('./kpiLeadSteps')
 
 const FINAL_STAGES = new Set(['deal', 'rejected', 'failed', 'abandoned'])
-const DEFAULT_MIN_MOMENTS = 3
+const DEFAULT_MIN_MOMENTS = 4
 
 const DEFAULT_KPI_PROMPT = `Отбор KPI считает программа, не ИИ.
 
-Правило:
-1) Активный = в Истории месяца есть работа менеджера.
-2) KPI-лид = активный + не старше 3 месяцев + минимум {minKpiMoments} СОДЕРЖАТЕЛЬНЫХ шагов (КП, звонок, образцы, этап, визит, комментарий с сутью). Плюс: есть сильный шаг, минимум 2 вида работы, и либо 2 разных дня, либо 3 вида в один день.
+Правило (простое, план спокойно 70–80%):
+1) Активный = любая работа в Истории за месяц.
+2) KPI-лид = активный, не старше 3 месяцев, и все четыре пункта:
+   — 4 содержательных шага;
+   — работа в 3 разных дня;
+   — звонок или визит;
+   — КП или образцы или сдвиг этапа.
 3) Сделка в 1-м месяце = сразу.
-4) «Клиент создан», «на паузе», «написала» без сути — не шаг KPI.
-5) Фразы от клиента не нужны. Цель: выполнение плана по лидам около 80–90%, не сверхвыполнение за счёт пустых комментариев.`
+4) «Написала» без сути не шаг. Фразы клиента не нужны.`
 
 function resolveActiveMonths(client, month) {
   const raw = client.openedDate || client.openedMonth || ''
@@ -51,6 +54,14 @@ async function updateClientKpi(db, clientId, fields) {
   })
 }
 
+async function deleteMonthLog(db, clientId, month) {
+  const existing = await findMonthLog(db, clientId, month)
+  if (!existing) return
+  const moments = Number(existing.data().significantMoments) || 0
+  if (moments >= 900) return
+  await existing.ref.delete()
+}
+
 async function writeKpiLeadLog(db, client, significantMoments, month, activeMonthsCount) {
   const existing = await findMonthLog(db, client.id, month)
   if (existing) return { wrote: false }
@@ -79,10 +90,11 @@ async function writeKpiLeadLog(db, client, significantMoments, month, activeMont
  * Counts manager steps on the lead from CRM history. Groq is not used.
  */
 async function qualifyLeadForKpi(db, _groq, client, history, config, month, options = {}) {
-  const minMoments = Math.max(1, Number(config.minKpiMoments) || DEFAULT_MIN_MOMENTS)
+  const minMoments = Math.max(4, Number(config.minKpiMoments) || DEFAULT_MIN_MOMENTS)
   const months = resolveActiveMonths(client, month)
 
   if (months > 3) {
+    await deleteMonthLog(db, client.id, month)
     await updateClientKpi(db, client.id, {
       kpiQualified: false,
       kpiQualifiedMonth: month,
@@ -90,18 +102,6 @@ async function qualifyLeadForKpi(db, _groq, client, history, config, month, opti
       kpiQualificationReason: 'Лид на 4-м месяце — максимальный срок истёк',
     })
     return { qualifies: false, reason: 'month4', activeMonthsCount: months }
-  }
-
-  const existingLog = await findMonthLog(db, client.id, month)
-  if (existingLog && !options.force) {
-    await updateClientKpi(db, client.id, {
-      kpiQualified: true,
-      kpiQualifiedMonth: month,
-      kpiSignificantMoments:
-        existingLog.data().significantMoments ?? client.kpiSignificantMoments ?? 0,
-      kpiQualificationReason: client.kpiQualificationReason || 'Уже в KPI за этот месяц',
-    })
-    return { qualifies: true, skipped: 'logged', activeMonthsCount: months }
   }
 
   if (client.stage === 'deal' && months === 1) {
@@ -120,6 +120,7 @@ async function qualifyLeadForKpi(db, _groq, client, history, config, month, opti
   }
 
   if (client.activityLabel !== 'active' || client.activityMonth !== month) {
+    await deleteMonthLog(db, client.id, month)
     await updateClientKpi(db, client.id, {
       kpiQualified: false,
       kpiQualifiedMonth: month,
@@ -138,12 +139,14 @@ async function qualifyLeadForKpi(db, _groq, client, history, config, month, opti
   })
   if (parsed.qualifies) {
     await writeKpiLeadLog(db, client, parsed.significantMoments, month, months)
+  } else {
+    await deleteMonthLog(db, client.id, month)
   }
   return { ...parsed, activeMonthsCount: months }
 }
 
 async function testKpiQualification(_db, _groq, client, history, config, month) {
-  const minMoments = Math.max(1, Number(config.minKpiMoments) || DEFAULT_MIN_MOMENTS)
+  const minMoments = Math.max(4, Number(config.minKpiMoments) || DEFAULT_MIN_MOMENTS)
   const months = resolveActiveMonths(client, month)
   const parsed = scoreFromHistory(history || [], minMoments)
   return {

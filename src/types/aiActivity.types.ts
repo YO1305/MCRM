@@ -44,18 +44,21 @@ JSON:
 
 export const DEFAULT_KPI_PROMPT = `Отбор KPI считает программа, не ИИ.
 
-Правило:
-1) Активный = в Истории месяца есть работа менеджера.
-2) KPI-лид = активный + не старше 3 месяцев + минимум {minKpiMoments} СОДЕРЖАТЕЛЬНЫХ шагов (КП, звонок, образцы, этап, визит, комментарий с сутью). Плюс: есть сильный шаг, минимум 2 вида работы, и либо 2 разных дня, либо 3 вида в один день.
+Правило (план спокойно 70–80%):
+1) Активный = любая работа в Истории за месяц.
+2) KPI-лид = активный, не старше 3 месяцев, и все четыре пункта:
+   — 4 содержательных шага;
+   — работа в 3 разных дня;
+   — звонок или визит;
+   — КП или образцы или сдвиг этапа.
 3) Сделка в 1-м месяце = сразу.
-4) «Клиент создан», «на паузе», «написала» без сути — не шаг KPI.
-5) Фразы от клиента не нужны. Цель: выполнение плана по лидам около 80–90%, не сверхвыполнение за счёт пустых комментариев.`
+4) «Написала» без сути не шаг.`
 
 export const DEFAULT_AI_ACTIVITY_CONFIG: AiActivityConfig = {
   minActiveDays: 10,
   activityPrompt: DEFAULT_ACTIVITY_PROMPT,
   isActive: true,
-  minKpiMoments: 3,
+  minKpiMoments: 4,
   kpiPrompt: DEFAULT_KPI_PROMPT,
   updatedBy: null,
 }
@@ -75,5 +78,5 @@ export function isLegacyActivityPrompt(text: unknown): boolean {
 export function isLegacyKpiPrompt(text: unknown): boolean {
   const s = String(text || '')
   if (!s.trim()) return true
-  return !/содержательн|два разных вида работы|сильный шаг/i.test(s)
+  return !/4 содержательных шага|3 разных дня/i.test(s)
 }

@@ -38,6 +38,8 @@ export interface KpiLeadScore {
   days: number
   types: number
   hasStrong: boolean
+  hasLive: boolean
+  hasOffer: boolean
 }
 
 export function isPauseText(value: string | null | undefined): boolean {
@@ -134,6 +136,22 @@ function entryDay(entry: { date?: string; createdAt?: unknown }): string {
   if (typeof entry.date === 'string' && entry.date.length >= 10) return entry.date.slice(0, 10)
   const raw = entry.createdAt
   if (typeof raw === 'string' && raw.length >= 10) return raw.slice(0, 10)
+  if (typeof raw === 'object' && raw !== null) {
+    const withToDate = raw as { toDate?: () => Date }
+    if (typeof withToDate.toDate === 'function') {
+      try {
+        const d = withToDate.toDate()
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+      } catch {
+        /* ignore */
+      }
+    }
+    const seconds = (raw as { seconds?: number }).seconds ?? (raw as { _seconds?: number })._seconds
+    if (typeof seconds === 'number') {
+      const d = new Date(seconds * 1000)
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    }
+  }
   return ''
 }
 
@@ -145,34 +163,44 @@ export function evaluateKpiLead(
     ...classifyLeadHistoryEntry(e),
     type: String(e.type || ''),
     day: entryDay(e),
+    text: String(e.text || ''),
   }))
   const steps = rows.filter((r) => r.kpiCounted)
   const n = steps.length
   const days = new Set(steps.map((s) => s.day).filter((d) => d.length >= 10)).size
   const types = new Set(steps.map((s) => s.type).filter(Boolean)).size
-  const hasStrong = steps.some((s) => s.strong)
-  const spreadOk = days >= 2 || types >= 3
+  const hasCallOrVisit = steps.some(
+    (s) => s.type === 'call' || s.type === 'visit' || /созвон|позвон|визит/i.test(s.text),
+  )
+  const hasCommercial = steps.some(
+    (s) =>
+      s.type === 'samples_sent' ||
+      s.type === 'stage_change' ||
+      s.type === 'next_step' ||
+      /кп|коммерческ|прайс|образц/i.test(s.text),
+  )
 
   const parts: string[] = []
-  if (n < minMoments) {
-    parts.push(`содержательных шагов ${n} из ${minMoments}`)
-  }
-  if (!hasStrong) {
-    parts.push('нет сильного шага (КП / звонок / образцы / этап / визит)')
-  }
-  if (types < 2) {
-    parts.push('нужны минимум 2 разных вида работы, не три одинаковых комментария')
-  }
-  if (!spreadOk) {
-    parts.push('всё в один день одним видом — нужно либо 2 разных дня, либо 3 разных вида работы')
-  }
+  if (n < minMoments) parts.push(`содержательных шагов ${n} из ${minMoments}`)
+  if (days < 3) parts.push(`дней с работой ${days} из 3`)
+  if (!hasCallOrVisit) parts.push('нет звонка и нет визита')
+  if (!hasCommercial) parts.push('нет КП / образцов / сдвига этапа')
 
-  const qualifies = n >= minMoments && hasStrong && types >= 2 && spreadOk
+  const qualifies = n >= minMoments && days >= 3 && hasCallOrVisit && hasCommercial
   const reason = qualifies
-    ? `Засчитан: ${n} содержательных шагов, ${types} вида работы, ${days || 1} дн., есть сильный шаг.`
-    : `Не засчитан: ${parts.join('; ')}. «Написала» без КП/звонка/образцов не считается. Активным клиент при этом может быть.`
+    ? `Засчитан: ${n} шагов за ${days} дн., есть контакт (звонок/визит) и КП/образцы/этап.`
+    : `Не засчитан: ${parts.join('; ')}. Нужно: 4 содержательных шага, 3 разных дня, звонок или визит, и КП либо образцы.`
 
-  return { significantMoments: n, qualifies, reason, days, types, hasStrong }
+  return {
+    significantMoments: n,
+    qualifies,
+    reason,
+    days,
+    types,
+    hasStrong: hasCallOrVisit && hasCommercial,
+    hasLive: hasCallOrVisit,
+    hasOffer: hasCommercial,
+  }
 }
 
 export function describeKpiSteps(

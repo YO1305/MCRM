@@ -43,7 +43,7 @@ import { IdleTouchHint } from '@/components/crm/IdleTouchHint'
 import { calculateActiveMonths, resolveOpenedDateFromClient } from '@/utils/dateUtils'
 import { canSeeLeadActivity, resolveActivityStatus, resolveOpenedMonth } from '@/utils/leadActivity'
 import { useAiActivityConfig } from '@/hooks/useAiActivityConfig'
-import { groqActivityIsCurrent, kpiMonthIsCurrent } from '@/utils/groqLeadActivity'
+import { effectiveGroqActivity, kpiMonthIsCurrent } from '@/utils/groqLeadActivity'
 import { ClientKpTab } from '@/components/crm/ClientKpTab'
 
 interface ClientDetailProps {
@@ -162,7 +162,7 @@ export function ClientDetail({
   const { pipeline } = useClientStages()
   const { config: activityConfig } = useAiActivityConfig()
   const month = getCurrentMonth()
-  const groqCurrent = groqActivityIsCurrent(client || {}, month)
+  const groqUi = effectiveGroqActivity(client || {}, month)
   const kpiCurrent = kpiMonthIsCurrent(client || {}, month)
   const minDays = activityConfig?.minActiveDays ?? 10
   const minMoments = activityConfig?.minKpiMoments ?? 3
@@ -557,10 +557,11 @@ export function ClientDetail({
             )}
             {isAdmin && (
               <GroqActivityBadge
-                label={client.activityLabel}
+                label={groqUi.label}
                 days={client.activeDaysThisMonth}
                 reason={client.activityReason}
-                current={groqCurrent}
+                current={Boolean(groqUi.label)}
+                carried={groqUi.carried}
               />
             )}
             {isAdmin && (
@@ -620,7 +621,8 @@ export function ClientDetail({
                 days={client.activeDaysThisMonth}
                 minDays={minDays}
                 month={month}
-                current={groqCurrent}
+                current={Boolean(groqUi.label)}
+                carried={groqUi.carried}
               />
               <KpiMomentsMeter
                 moments={client.kpiSignificantMoments}

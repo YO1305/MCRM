@@ -21,7 +21,7 @@ import { clientActionDeadline } from '@/utils/clientWork'
 import type { ActivityStatus, Client } from '@/types/client.types'
 import type { GroqActivityLabel } from '@/types/aiActivity.types'
 import { canSeeLeadActivity, resolveActivityStatus } from '@/utils/leadActivity'
-import { groqActivityIsCurrent, kpiMonthIsCurrent } from '@/utils/groqLeadActivity'
+import { effectiveGroqActivity, kpiMonthIsCurrent } from '@/utils/groqLeadActivity'
 import { useAiConfig } from '@/hooks/useAiConfig'
 
 type CrmSection = 'funnel' | 'ai'
@@ -166,14 +166,20 @@ export function CRM() {
       if (waitFilter !== 'all' && c.waitStatus !== waitFilter) return false
       if (
         showActivity &&
-        activityFilter !== 'all' &&
-        resolveActivityStatus(c, activityThresholds) !== activityFilter
+        activityFilter !== 'all'
       ) {
-        return false
+        const st = resolveActivityStatus(c, activityThresholds)
+        if (activityFilter === 'active') {
+          const groq = effectiveGroqActivity(c, getCurrentMonth())
+          if (st !== 'active' && st !== 'new' && groq.label !== 'active') return false
+        } else if (st !== activityFilter) {
+          return false
+        }
       }
       if (isAdmin && groqFilter !== 'all') {
         const month = getCurrentMonth()
-        if (!groqActivityIsCurrent(c, month) || c.activityLabel !== groqFilter) return false
+        const { label } = effectiveGroqActivity(c, month)
+        if (label !== groqFilter) return false
       }
       if (isAdmin && kpiFilter !== 'all') {
         const month = getCurrentMonth()
@@ -338,7 +344,10 @@ export function CRM() {
       )}
 
       {showActivity && (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[11px] font-medium uppercase tracking-wide text-muted">
+            Срок лида
+          </span>
           {(
             [
               ['all', 'Все'],
@@ -367,7 +376,7 @@ export function CRM() {
       {isAdmin && (
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-[11px] font-medium uppercase tracking-wide text-muted">
-            За месяц
+            Работа по лиду
           </span>
           {(
             [
@@ -390,6 +399,9 @@ export function CRM() {
               {label}
             </button>
           ))}
+          <span className="text-[11px] text-muted">
+            С 1-го числа не обнуляется: пока в новом месяце пусто, остаётся прошлый месяц.
+          </span>
         </div>
       )}
 

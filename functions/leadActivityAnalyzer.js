@@ -164,6 +164,35 @@ function autoReason(entries, label) {
   return 'В истории месяца есть действия менеджера.'
 }
 
+function previousYearMonth(month) {
+  const [y, m] = String(month).split('-').map(Number)
+  const d = new Date(y, (m || 1) - 2, 1)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
+function hadRecentWork(client, month) {
+  const prev = previousYearMonth(month)
+  const touch = String(client.lastTouchDate || '').slice(0, 7)
+  const move = String(client.lastStageChangeDate || '').slice(0, 7)
+  if (touch === month || touch === prev || move === month || move === prev) return true
+  if (client.activityMonth === prev && client.activityLabel === 'active') return true
+  if (client.activityCarriedFrom && client.activityLabel === 'active') return true
+  return false
+}
+
+function applyCarryForward(result, client, month, entries) {
+  if (result.label !== 'passive') return { ...result, carried: false }
+  if (hasCrmWork(entries)) return { ...result, carried: false }
+  if (!hadRecentWork(client, month)) return { ...result, carried: false }
+  return {
+    label: 'active',
+    score: Math.max(Number(result.score) || 0, 55),
+    reason:
+      'Активность не сбрасывается с 1-го числа: в этом месяце новых записей пока нет, работа с прошлого месяца продолжается.',
+    carried: true,
+  }
+}
+
 /** Label from the CRM journal (what you see in История), not Groq chat-style rules. */
 function applyDayThreshold(result, activeDaysCount, minDays, waitStatus, entries = []) {
   const label = classifyLabel(entries, waitStatus)
@@ -333,13 +362,15 @@ async function analyzeOneClient(db, groq, client, config, month, todayStr, optio
     daysSinceLastTouch: daysDiff(resolveTouchDate(client, todayStr), todayStr),
   }
   const groqResult = await analyzeWithGroq(groq, input, config)
-  const result = applyDayThreshold(
+  const classified = applyDayThreshold(
     groqResult,
     activeDaysCount,
     config.minActiveDays,
     client.waitStatus,
     history,
   )
+  const result = applyCarryForward(classified, client, month, history)
+  const prevMonth = previousYearMonth(month)
   await db.collection('clients').doc(client.id).update({
     activityScore: result.score,
     activityLabel: result.label,
@@ -347,11 +378,15 @@ async function analyzeOneClient(db, groq, client, config, month, todayStr, optio
     activityAnalyzedAt: FieldValue.serverTimestamp(),
     activityReason: result.reason,
     activeDaysThisMonth: activeDaysCount,
+    activityCarriedFrom: result.carried ? client.activityCarriedFrom || prevMonth : null,
     updatedAt: FieldValue.serverTimestamp(),
   })
   let kpi = null
   try {
-    kpi = await qualifyLeadForKpi(
+    if (!hasCrmWork(history) && client.stage !== 'deal') {
+      kpi = { skipped: 'empty_month_carry', qualifies: false }
+    } else {
+      kpi = await qualifyLeadForKpi(
       db,
       groq,
       {
@@ -365,6 +400,7 @@ async function analyzeOneClient(db, groq, client, config, month, todayStr, optio
       month,
       options,
     )
+    }
   } catch (err) {
     console.error(`KPI step failed for ${client.id}:`, err)
   }
@@ -437,13 +473,14 @@ async function runActivityAnalysis(db, apiKey, options = {}) {
       try {
         const failHistory = await loadMonthHistory(db, client.id, month).catch(() => [])
         const failDays = calculateActiveDays(failHistory)
-        const failed = applyDayThreshold(
+        const failedRaw = applyDayThreshold(
           { label: 'passive', score: 0, reason: 'Авто-оценка: сбой анализа' },
           failDays,
           config.minActiveDays,
           client.waitStatus,
           failHistory,
         )
+        const failed = applyCarryForward(failedRaw, client, month, failHistory)
         await db.collection('clients').doc(client.id).update({
           activityScore: failed.score,
           activityLabel: failed.label,
@@ -451,6 +488,7 @@ async function runActivityAnalysis(db, apiKey, options = {}) {
           activityAnalyzedAt: FieldValue.serverTimestamp(),
           activityReason: failed.reason,
           activeDaysThisMonth: failDays,
+          activityCarriedFrom: failed.carried ? previousYearMonth(month) : null,
           updatedAt: FieldValue.serverTimestamp(),
         })
         processed += 1

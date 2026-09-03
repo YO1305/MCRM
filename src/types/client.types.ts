@@ -91,6 +91,8 @@ export interface Client {
   activityAnalyzedAt?: unknown
   activityReason?: string | null
   activeDaysThisMonth?: number | null
+  /** Previous month the current active/paused label was carried from. */
+  activityCarriedFrom?: string | null
   /** Groq KPI qualification for the current month */
   kpiQualified?: boolean | null
   kpiQualifiedMonth?: string | null

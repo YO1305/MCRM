@@ -13,12 +13,13 @@ interface GroqActivityBadgeProps {
   days?: number | null
   reason?: string | null
   current?: boolean
+  carried?: boolean
 }
 
 /** Admin-only Groq monthly activity (active / passive / paused). */
-export function GroqActivityBadge({ label, days, reason, current }: GroqActivityBadgeProps) {
+export function GroqActivityBadge({ label, days, reason, current, carried }: GroqActivityBadgeProps) {
   if (!label || !current) return null
-  const daysPart = typeof days === 'number' ? ` · ${days} дн.` : ''
+  const daysPart = typeof days === 'number' && days > 0 ? ` · ${days} дн.` : carried ? ' · с прошлого мес.' : ''
   return (
     <span title={reason || undefined}>
       <Badge variant={VARIANT[label]}>

@@ -100,6 +100,84 @@ export function groqActivityIsCurrent(
   return Boolean(client.activityLabel && client.activityMonth === month)
 }
 
+export function previousYearMonth(month: string): string {
+  const [y, m] = month.split('-').map(Number)
+  const d = new Date(y, (m || 1) - 2, 1)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
+function monthKeyOf(iso: string | null | undefined): string {
+  return String(iso || '').slice(0, 7)
+}
+
+function isPauseWait(value: string | null | undefined): boolean {
+  return String(value || '').toLowerCase().includes('на паузе')
+}
+
+/**
+ * CRM filter / badges: do not wipe "active" on the 1st of a new month.
+ * KPI still uses the strict current-month journal separately.
+ */
+export function effectiveGroqActivity(
+  client: Partial<
+    Pick<
+      Client,
+      | 'activityLabel'
+      | 'activityMonth'
+      | 'activeDaysThisMonth'
+      | 'waitStatus'
+      | 'lastTouchDate'
+      | 'lastStageChangeDate'
+      | 'activityCarriedFrom'
+    >
+  >,
+  month: string = getCurrentMonth(),
+): { label: GroqActivityLabel | null; carried: boolean; sourceMonth: string | null } {
+  const prev = previousYearMonth(month)
+  const days = Number(client.activeDaysThisMonth) || 0
+  const thisLabel =
+    client.activityMonth === month ? (client.activityLabel as GroqActivityLabel | null) : null
+  const prevLabel =
+    client.activityMonth === prev ? (client.activityLabel as GroqActivityLabel | null) : null
+
+  if (isPauseWait(client.waitStatus) && days === 0 && thisLabel !== 'active') {
+    return { label: 'paused', carried: thisLabel !== 'paused', sourceMonth: month }
+  }
+
+  if (thisLabel === 'active' && (days > 0 || client.activityCarriedFrom)) {
+    return {
+      label: 'active',
+      carried: Boolean(client.activityCarriedFrom) && days === 0,
+      sourceMonth: client.activityCarriedFrom || month,
+    }
+  }
+
+  if (thisLabel === 'active') {
+    return { label: 'active', carried: false, sourceMonth: month }
+  }
+
+  if (days > 0 && thisLabel) {
+    return { label: thisLabel, carried: false, sourceMonth: month }
+  }
+
+  const touchM = monthKeyOf(client.lastTouchDate)
+  const moveM = monthKeyOf(client.lastStageChangeDate)
+  const recent = touchM === month || touchM === prev || moveM === month || moveM === prev
+
+  if (!thisLabel || thisLabel === 'passive') {
+    if (prevLabel === 'active' || prevLabel === 'paused') {
+      return { label: prevLabel, carried: true, sourceMonth: prev }
+    }
+    if (recent) {
+      return { label: 'active', carried: true, sourceMonth: touchM || moveM || prev }
+    }
+  }
+
+  if (thisLabel) return { label: thisLabel, carried: false, sourceMonth: month }
+  if (prevLabel) return { label: prevLabel, carried: true, sourceMonth: prev }
+  return { label: null, carried: false, sourceMonth: null }
+}
+
 export function kpiMonthIsCurrent(
   client: Pick<Client, 'kpiQualifiedMonth'>,
   month: string = getCurrentMonth(),
@@ -122,18 +200,24 @@ export function formatMonthNominative(month: string): string {
 }
 
 export function countGroqActivity(
-  clients: Pick<Client, 'stage' | 'activityLabel' | 'activityMonth'>[],
+  clients: Pick<
+    Client,
+    | 'stage'
+    | 'activityLabel'
+    | 'activityMonth'
+    | 'activeDaysThisMonth'
+    | 'waitStatus'
+    | 'lastTouchDate'
+    | 'lastStageChangeDate'
+    | 'activityCarriedFrom'
+  >[],
   month: string = getCurrentMonth(),
 ): { active: number; passive: number; paused: number; unlabeled: number } {
   const counts = { active: 0, passive: 0, paused: 0, unlabeled: 0 }
   const closed = new Set(['deal', 'rejected', 'failed', 'abandoned'])
   for (const client of clients) {
     if (closed.has(String(client.stage))) continue
-    if (client.activityMonth !== month || !client.activityLabel) {
-      counts.unlabeled += 1
-      continue
-    }
-    const label = client.activityLabel as GroqActivityLabel
+    const { label } = effectiveGroqActivity(client, month)
     if (label === 'active' || label === 'passive' || label === 'paused') {
       counts[label] += 1
     } else {

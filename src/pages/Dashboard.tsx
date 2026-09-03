@@ -332,8 +332,9 @@ export function Dashboard() {
             </Button>
           </div>
           <p className="text-xs text-muted">
-            Как в карточке: есть работа в «Истории» за месяц — активный. Порог дней только
-            для шкалы ({groqActivityConfig?.minActiveDays ?? 10} дн.).
+            Как в карточке: есть работа в «Истории» — активный. С нового месяца статус не
+            обнуляется, пока нет новых записей (порог дней только для шкалы,{' '}
+            {groqActivityConfig?.minActiveDays ?? 10} дн.).
           </p>
           {(
             [

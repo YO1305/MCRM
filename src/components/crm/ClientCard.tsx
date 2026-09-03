@@ -22,7 +22,7 @@ import { IdleTouchHint } from '@/components/crm/IdleTouchHint'
 import { calculateActiveMonths } from '@/utils/dateUtils'
 import { canSeeLeadActivity, resolveActivityStatus, resolveOpenedMonth } from '@/utils/leadActivity'
 import { useAiActivityConfig } from '@/hooks/useAiActivityConfig'
-import { groqActivityIsCurrent, kpiMonthIsCurrent } from '@/utils/groqLeadActivity'
+import { effectiveGroqActivity, kpiMonthIsCurrent } from '@/utils/groqLeadActivity'
 import { getCurrentMonth } from '@/utils/dates'
 
 interface ClientCardProps {
@@ -45,7 +45,7 @@ export function ClientCard({
   const showActivity = isAdmin || canSeeLeadActivity(user)
   const { config: activityConfig } = useAiActivityConfig()
   const month = getCurrentMonth()
-  const groqCurrent = groqActivityIsCurrent(client, month)
+  const groqUi = effectiveGroqActivity(client, month)
   const kpiCurrent = kpiMonthIsCurrent(client, month)
   const minDays = activityConfig?.minActiveDays ?? 10
   const [moreOpen, setMoreOpen] = useState(false)
@@ -84,10 +84,11 @@ export function ClientCard({
           )}
           {isAdmin && (
             <GroqActivityBadge
-              label={client.activityLabel}
+              label={groqUi.label}
               days={client.activeDaysThisMonth}
               reason={client.activityReason}
-              current={groqCurrent}
+              current={Boolean(groqUi.label)}
+              carried={groqUi.carried}
             />
           )}
           {isAdmin && (
@@ -123,7 +124,8 @@ export function ClientCard({
               days={client.activeDaysThisMonth}
               minDays={minDays}
               month={month}
-              current={groqCurrent}
+              current={Boolean(groqUi.label)}
+              carried={groqUi.carried}
             />
           ) : (
             <IdleTouchHint client={client} />

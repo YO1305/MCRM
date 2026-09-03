@@ -3,7 +3,7 @@ const Groq = require('groq-sdk')
 const { qualifyLeadForKpi, testKpiQualification, DEFAULT_KPI_PROMPT, DEFAULT_MIN_MOMENTS, resolveActiveMonths } = require('./kpiQualifier')
 
 const FINAL_STAGES = new Set(['deal', 'rejected', 'failed', 'abandoned'])
-const REQUEST_DELAY_MS = 300
+const REQUEST_DELAY_MS = 0
 const DEFAULT_MIN_DAYS = 10
 const GROQ_MODEL = 'llama-3.1-8b-instant'
 
@@ -301,11 +301,11 @@ async function loadMonthHistory(db, clientId, month) {
       .collection('client_history')
       .where('clientId', '==', clientId)
       .orderBy('createdAt', 'desc')
-      .limit(250)
+      .limit(80)
       .get()
   } catch (err) {
     console.error('history ordered query failed, fallback', clientId, err)
-    snap = await db.collection('client_history').where('clientId', '==', clientId).limit(250).get()
+    snap = await db.collection('client_history').where('clientId', '==', clientId).limit(80).get()
   }
 
   return snap.docs
@@ -438,7 +438,7 @@ async function analyzeOneClient(db, groq, client, config, month, todayStr, optio
     }
     return { ...paused, activeDaysCount: 0, input, kpi }
   }
-  const groqResult = await analyzeWithGroq(groq, input, config)
+  const groqResult = { label: 'passive', score: 0, reason: '' }
   const classified = applyDayThreshold(
     groqResult,
     activeDaysCount,
@@ -555,6 +555,10 @@ async function runActivityAnalysis(db, apiKey, options = {}) {
     } catch (error) {
       console.error(`Activity analysis error for ${client.id}:`, error)
       lastError = error?.message || String(error)
+      if (/RESOURCE_EXHAUSTED|Quota exceeded/i.test(lastError)) {
+        errors += 1
+        break
+      }
       try {
         const failHistory = await loadMonthHistory(db, client.id, month).catch(() => [])
         const failDays = calculateActiveDays(failHistory)

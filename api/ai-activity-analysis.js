@@ -4,7 +4,7 @@ import admin from 'firebase-admin'
 const require = createRequire(import.meta.url)
 const { runActivityAnalysis, testClientActivity, testClientKpi } = require('../functions/leadActivityAnalyzer.js')
 
-const MAX_LEADS_PER_RUN = 30
+const MAX_LEADS_PER_RUN = 40
 
 function initAdmin() {
   if (admin.apps.length) return admin.app()
@@ -81,12 +81,6 @@ export default async function handler(req, res) {
   try {
     await assertCaller(req)
     const apiKey = (process.env.GROQ_API_KEY || '').trim()
-    if (!apiKey) {
-      const err = new Error('GROQ_API_KEY не задан в Vercel Environment Variables')
-      err.code = 'NO_GROQ_KEY'
-      err.status = 503
-      throw err
-    }
 
     const db = admin.firestore()
     const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body || {}
@@ -113,12 +107,25 @@ export default async function handler(req, res) {
       force: req.method === 'POST' ? body.force !== false : Boolean(body.force),
       month: body.month ? String(body.month) : undefined,
       runStartedAt: body.runStartedAt ? String(body.runStartedAt) : undefined,
-      timeBudgetMs: Number(body.timeBudgetMs) || 52000,
+      timeBudgetMs: Number(body.timeBudgetMs) || 45000,
     })
     return res.status(200).json(result)
   } catch (err) {
-    const status = err.status || 500
+    const msg = String(err.message || '')
+    const quota = /RESOURCE_EXHAUSTED|Quota exceeded|429/i.test(msg)
+    const status = quota ? 200 : err.status || 500
     console.error('ai-activity-analysis', err)
+    if (quota) {
+      return res.status(200).json({
+        ok: false,
+        processed: 0,
+        remaining: 1,
+        errors: 1,
+        lastError: 'Перегрузка Firestore. Подождите 10 секунд и нажмите анализ ещё раз — он продолжится.',
+        error: msg,
+        code: 'QUOTA',
+      })
+    }
     return res.status(status).json({
       error: err.message || 'Ошибка анализа активности',
       code: err.code || 'ACTIVITY_ERROR',

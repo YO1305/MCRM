@@ -194,6 +194,7 @@ export interface GroqActivityAnalysisResult {
   remaining?: number
   errors?: number
   lastError?: string
+  code?: string
   skippedAll?: boolean
   reason?: string
   result?: {
@@ -242,28 +243,45 @@ export async function runActivityAnalysisUntilDone(input?: {
   let stuck = 0
 
   for (let i = 0; i < 80; i += 1) {
-    const result = await runActivityAnalysisNow({
-      force: true,
-      month: input?.month,
-      runStartedAt,
-      maxClients: 22,
-      timeBudgetMs: 52000,
-    })
-    const batch = Number(result.processed) || 0
-    processed += batch
-    errors += Number(result.errors) || 0
-    if (result.lastError) lastError = result.lastError
-    remaining = Number(result.remaining) || 0
-    month = result.month || month
-    input?.onProgress?.({ processed, remaining, month })
-    if (remaining <= 0) {
-      return { ok: true, month, processed, remaining: 0, errors, lastError: lastError || undefined }
-    }
-    if (batch === 0) {
-      stuck += 1
-      if (stuck >= 2) break
-    } else {
-      stuck = 0
+    try {
+      const result = await runActivityAnalysisNow({
+        force: true,
+        month: input?.month,
+        runStartedAt,
+        maxClients: 25,
+        timeBudgetMs: 40000,
+      })
+      const batch = Number(result.processed) || 0
+      processed += batch
+      errors += Number(result.errors) || 0
+      if (result.lastError) lastError = result.lastError
+      remaining = Number(result.remaining) || 0
+      month = result.month || month
+      input?.onProgress?.({ processed, remaining, month })
+      if (remaining <= 0 && result.code !== 'QUOTA') {
+        return { ok: true, month, processed, remaining: 0, errors, lastError: lastError || undefined }
+      }
+      if (result.code === 'QUOTA' || /Перегрузка|Quota|RESOURCE_EXHAUSTED/i.test(result.lastError || '')) {
+        await new Promise((r) => setTimeout(r, 8000))
+        stuck = 0
+        continue
+      }
+      if (batch === 0) {
+        stuck += 1
+        if (stuck >= 2) break
+      } else {
+        stuck = 0
+      }
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : String(err)
+      const retry =
+        /504|502|503|Quota|RESOURCE_EXHAUSTED|Перегрузка/i.test(lastError) ||
+        /http\/504|http\/502/.test((err as Error & { code?: string }).code || '')
+      if (retry && i < 79) {
+        await new Promise((r) => setTimeout(r, 8000))
+        continue
+      }
+      throw err
     }
   }
 

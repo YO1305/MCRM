@@ -41,14 +41,24 @@ function scoreFromHistory(client, history, minMoments, month) {
   return evaluateKpiLead(historyForKpiClock(client, history || []), minMoments, month)
 }
 
+function kpiLogId(clientId, month) {
+  return `kl_${clientId}_${month}`
+}
+
 async function findMonthLog(db, clientId, month) {
-  const snap = await db
-    .collection('kpi_lead_log')
-    .where('clientId', '==', clientId)
-    .where('month', '==', month)
-    .limit(1)
-    .get()
-  return snap.empty ? null : snap.docs[0]
+  const named = await db.collection('kpi_lead_log').doc(kpiLogId(clientId, month)).get()
+  if (named.exists) return named
+  try {
+    const snap = await db
+      .collection('kpi_lead_log')
+      .where('clientId', '==', clientId)
+      .where('month', '==', month)
+      .limit(1)
+      .get()
+    return snap.empty ? null : snap.docs[0]
+  } catch {
+    return null
+  }
 }
 
 async function updateClientKpi(db, clientId, fields) {
@@ -75,7 +85,7 @@ async function writeKpiLeadLog(db, client, significantMoments, month, activeMont
   const existing = await findMonthLog(db, client.id, month)
   if (existing) return { wrote: false }
   const cats = leadCategories(client)
-  await db.collection('kpi_lead_log').add({
+  await db.collection('kpi_lead_log').doc(kpiLogId(client.id, month)).set({
     clientId: client.id,
     clientName: client.name || '',
     assignedTo: client.assignedTo || '',

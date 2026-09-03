@@ -20,6 +20,31 @@ function leadCategories(client) {
   return client.category ? [client.category] : ['fabric']
 }
 
+function logDocId(clientId, month) {
+  return `kl_${clientId}_${month}`
+}
+
+function isQuota(err) {
+  return /RESOURCE_EXHAUSTED|Quota exceeded/i.test(String(err?.message || err || ''))
+}
+
+async function withQuotaRetry(fn) {
+  let last
+  for (let i = 0; i < 5; i += 1) {
+    try {
+      return await fn()
+    } catch (err) {
+      last = err
+      if (!isQuota(err)) throw err
+      await new Promise((r) => setTimeout(r, 1200 * (i + 1)))
+    }
+  }
+  const err = new Error('База перегружена. Подождите минуту и нажмите «Засчитать» ещё раз.')
+  err.status = 429
+  err.cause = last
+  throw err
+}
+
 async function assertAdmin(req) {
   const authHeader = req.headers.authorization || ''
   const bearer = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : ''
@@ -36,16 +61,6 @@ async function assertAdmin(req) {
     throw err
   }
   return decoded.uid
-}
-
-async function findMonthLog(db, clientId, month) {
-  const snap = await db
-    .collection('kpi_lead_log')
-    .where('clientId', '==', clientId)
-    .where('month', '==', month)
-    .limit(5)
-    .get()
-  return snap.docs
 }
 
 export default async function handler(req, res) {
@@ -71,60 +86,71 @@ export default async function handler(req, res) {
 
     const db = admin.firestore()
     const FieldValue = admin.firestore.FieldValue
-    const clientSnap = await db.collection('clients').doc(clientId).get()
-    if (!clientSnap.exists) return res.status(404).json({ error: 'Клиент не найден' })
-    const client = { id: clientSnap.id, ...clientSnap.data() }
-    const logs = await findMonthLog(db, clientId, month)
+    const logRef = db.collection('kpi_lead_log').doc(logDocId(clientId, month))
+    const clientRef = db.collection('clients').doc(clientId)
 
-    if (action === 'exclude') {
-      const batch = db.batch()
-      for (const doc of logs) batch.delete(doc.ref)
-      batch.update(db.collection('clients').doc(clientId), {
-        kpiQualified: false,
+    await withQuotaRetry(async () => {
+      const clientSnap = await clientRef.get()
+      if (!clientSnap.exists) {
+        const err = new Error('Клиент не найден')
+        err.status = 404
+        throw err
+      }
+      const client = { id: clientSnap.id, ...clientSnap.data() }
+
+      if (action === 'exclude') {
+        await logRef.delete().catch(() => {})
+        await clientRef.update({
+          kpiQualified: false,
+          kpiQualifiedMonth: month,
+          kpiQualificationReason: 'Админ снял лид из KPI вручную',
+          kpiManualIncluded: false,
+          kpiManualMonth: month,
+          kpiQualifiedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        })
+        return
+      }
+
+      const cats = leadCategories(client)
+      await logRef.set(
+        {
+          clientId,
+          clientName: client.name || '',
+          assignedTo: client.assignedTo || '',
+          assignedToName: client.assignedToName || '',
+          category: cats[0] || 'fabric',
+          categories: cats,
+          country: client.country || null,
+          month,
+          significantMoments: Math.max(3, Number(client.kpiSignificantMoments) || 3),
+          qualifiedAt: FieldValue.serverTimestamp(),
+          fixedAt: FieldValue.serverTimestamp(),
+          stage: client.stage || '',
+          source: 'admin',
+        },
+        { merge: true },
+      )
+      await clientRef.update({
+        kpiQualified: true,
         kpiQualifiedMonth: month,
-        kpiQualificationReason: 'Админ снял лид из KPI вручную',
-        kpiManualIncluded: false,
+        kpiQualificationReason: 'Админ засчитал лид вручную',
+        kpiManualIncluded: true,
         kpiManualMonth: month,
         kpiQualifiedAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       })
-      await batch.commit()
-      return res.status(200).json({ ok: true, action: 'exclude' })
-    }
-
-    const cats = leadCategories(client)
-    if (logs.length === 0) {
-      await db.collection('kpi_lead_log').add({
-        clientId,
-        clientName: client.name || '',
-        assignedTo: client.assignedTo || '',
-        assignedToName: client.assignedToName || '',
-        category: cats[0] || 'fabric',
-        categories: cats,
-        country: client.country || null,
-        month,
-        significantMoments: Math.max(3, Number(client.kpiSignificantMoments) || 3),
-        qualifiedAt: FieldValue.serverTimestamp(),
-        fixedAt: FieldValue.serverTimestamp(),
-        stage: client.stage || '',
-        source: 'admin',
-      })
-    }
-    await db.collection('clients').doc(clientId).update({
-      kpiQualified: true,
-      kpiQualifiedMonth: month,
-      kpiQualificationReason: 'Админ засчитал лид вручную',
-      kpiManualIncluded: true,
-      kpiManualMonth: month,
-      kpiQualifiedAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
     })
-    return res.status(200).json({ ok: true, action: 'include' })
+
+    return res.status(200).json({ ok: true, action })
   } catch (err) {
     console.error('kpi-lead-override', err)
-    return res.status(err.status || 500).json({
-      error: err.message || 'Не удалось изменить KPI-лид',
-      code: err.code || 'OVERRIDE_ERROR',
+    const quota = isQuota(err)
+    return res.status(err.status || (quota ? 429 : 500)).json({
+      error: quota
+        ? 'База перегружена. Подождите минуту и нажмите «Засчитать» ещё раз.'
+        : err.message || 'Не удалось изменить KPI-лид',
+      code: quota ? 'QUOTA' : err.code || 'OVERRIDE_ERROR',
     })
   }
 }

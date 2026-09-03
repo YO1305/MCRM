@@ -114,7 +114,7 @@ function entryDay(entry) {
   return ''
 }
 
-const ABANDONED_SILENCE_DAYS = 10
+const ABANDONED_SILENCE_DAYS = 14
 
 function monthCutoffDay(month, today) {
   today = today || new Date()

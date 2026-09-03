@@ -497,7 +497,7 @@ async function runActivityAnalysis(db, apiKey, options = {}) {
     return { ok: true, skippedAll: true, reason: 'Activity analysis disabled', processed: 0, remaining: 0 }
   }
 
-  const groqClient = new Groq({ apiKey: String(apiKey || '') })
+  const groqClient = apiKey ? new Groq({ apiKey: String(apiKey) }) : null
   const month = resolveAnalysisMonth(options)
   const todayStr = tashkentToday()
   const maxClients = Number(options.maxClients) || 40

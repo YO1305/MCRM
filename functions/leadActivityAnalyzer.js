@@ -275,7 +275,11 @@ async function loadConfig(db) {
     activityPrompt: !storedPrompt.trim() || legacyPrompt ? DEFAULT_ACTIVITY_PROMPT : storedPrompt,
     isActive: data.isActive !== false,
     minKpiMoments: Math.max(1, Number(data.minKpiMoments) || DEFAULT_MIN_MOMENTS),
-    kpiPrompt: data.kpiPrompt || DEFAULT_KPI_PROMPT,
+    kpiPrompt:
+      !String(data.kpiPrompt || '').trim() ||
+      !/отправил\w*\s+кп|кп\s*\/\s*коммерческ|этап «кп отправлено»/i.test(String(data.kpiPrompt || ''))
+        ? DEFAULT_KPI_PROMPT
+        : data.kpiPrompt,
   }
 }
 

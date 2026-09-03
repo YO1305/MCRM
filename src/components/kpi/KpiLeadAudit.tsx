@@ -62,7 +62,7 @@ export function KpiLeadAudit({
   const [managerId, setManagerId] = useState('all')
   const [bucket, setBucket] = useState<'all' | 'yes' | 'no'>('all')
   const [selectedId, setSelectedId] = useState('')
-  const [showRules, setShowRules] = useState(true)
+  const [showRules, setShowRules] = useState(false)
 
   const logByClient = useMemo(() => {
     const map = new Map<string, KpiLeadLog>()
@@ -123,9 +123,9 @@ export function KpiLeadAudit({
         <div>
           <h2 className="text-lg font-semibold text-text">Разбор KPI-лидов по клиенту</h2>
           <p className="mt-1 text-sm text-muted">
-            В зарплату попали <span className="font-medium text-text">{countedN}</span> карточек
-            (журнал KPI). Выберите клиента — ниже каждая ступень: журнал CRM, Groq-активность,
-            Groq-квалификация, почему засчитали или нет, рекомендации.
+            Найдите клиента (например Шахноза). Справа увидите: сколько строк — работа менеджера
+            (активный лид), сколько — шаги клиента (KPI), и почему строка не засчитана. Отправка КП
+            делает клиента активным, но не KPI-лидом.
           </p>
         </div>
         <select
@@ -167,7 +167,7 @@ export function KpiLeadAudit({
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Имя клиента…"
+            placeholder="Например Шахноза"
             className="rounded-lg border border-gray-200 bg-surface px-3 py-2 text-sm outline-none focus:border-secondary"
           />
           <select
@@ -265,46 +265,89 @@ export function KpiLeadAudit({
           ) : (
             <p className="text-xs text-muted">
               Записей в истории за месяц: {explanation.monthHistoryCount}. Дней с работой:{' '}
-              {explanation.activeDays}. Журнал ступени 1: {explanation.journalLabel}.
+              {explanation.activeDays}. Журнал: {explanation.journalLabel}.
             </p>
           )}
 
-          <div className="space-y-2">
-            {explanation.gates.map((g) => (
-              <div key={g.id} className={`rounded-lg border px-3 py-2 ${gateClass(g.status)}`}>
-                <p className="text-sm font-semibold text-text">
-                  {g.title}{' '}
-                  <span className="font-normal text-xs uppercase tracking-wide text-muted">
-                    {gateWord(g.status)}
-                  </span>
-                </p>
-                <p className="mt-1 text-sm leading-relaxed text-text">{g.detail}</p>
-              </div>
-            ))}
+          <div className="grid gap-2 sm:grid-cols-3">
+            <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-center">
+              <p className="text-2xl font-semibold text-gray-900">{explanation.managerWorkCount}</p>
+              <p className="text-xs text-gray-500">работа менеджера (КП, «написала»)</p>
+            </div>
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-center">
+              <p className="text-2xl font-semibold text-emerald-800">{explanation.clientStepCount}</p>
+              <p className="text-xs text-emerald-800">шагов клиента из {minKpiMoments}</p>
+            </div>
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-center">
+              <p className="text-2xl font-semibold text-amber-800">{explanation.needMoreSteps}</p>
+              <p className="text-xs text-amber-800">ещё не хватает до KPI-лида</p>
+            </div>
           </div>
 
+          <p className="text-xs text-muted">В зарплатном журнале за месяц: {countedN} карточек.</p>
+
+          <div className="space-y-2">
+            {explanation.gates
+              .filter((g) => g.id === 'human' || g.id === 'score')
+              .map((g) => (
+                <div key={g.id} className={`rounded-lg border px-3 py-2 ${gateClass(g.status)}`}>
+                  <p className="text-sm font-semibold text-text">
+                    {g.title}{' '}
+                    <span className="font-normal text-xs uppercase tracking-wide text-muted">
+                      {gateWord(g.status)}
+                    </span>
+                  </p>
+                  <p className="mt-1 text-sm leading-relaxed text-text">{g.detail}</p>
+                </div>
+              ))}
+          </div>
+
+          {explanation.howToFix.length > 0 && (
+            <div className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-3">
+              <h4 className="text-sm font-semibold text-text">Что написать в истории, чтобы засчитало</h4>
+              <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-text">
+                {explanation.howToFix.map((r) => (
+                  <li key={r}>{r}</li>
+                ))}
+              </ol>
+            </div>
+          )}
+
           <div>
-            <h4 className="text-sm font-semibold text-text">Журнал за {formatMonthHuman(month)} построчно</h4>
+            <h4 className="text-sm font-semibold text-text">
+              Каждая строка: в KPI или только активность
+            </h4>
             {explanation.history.length === 0 ? (
               <p className="mt-1 text-sm text-muted">За этот месяц в «Истории» пусто.</p>
             ) : (
               <ul className="mt-2 space-y-2">
                 {explanation.history.map((h, i) => (
-                  <li key={`${h.date}-${i}`} className="rounded-lg border border-gray-100 bg-surface px-3 py-2 text-sm">
-                    <p className="text-xs text-muted">
-                      {h.date} · {h.typeLabel}
-                      {h.countsAsWork ? ' · даёт активность' : ' · не даёт активность'}
-                    </p>
-                    <p className="mt-0.5 text-text">{h.text}</p>
-                    {h.skipReason && <p className="mt-0.5 text-xs text-muted">{h.skipReason}</p>}
-                    {h.looksLikeClientStep && (
-                      <p className="mt-0.5 text-xs text-emerald-700">
-                        Похоже на шаг клиента (Groq KPI): {h.looksLikeClientStep}
-                      </p>
-                    )}
-                    {h.looksLikeManagerOnly && !h.looksLikeClientStep && (
-                      <p className="mt-0.5 text-xs text-amber-800">
-                        Похоже только на работу менеджера: {h.looksLikeManagerOnly}
+                  <li
+                    key={`${h.date}-${i}`}
+                    className={`rounded-lg border px-3 py-2 text-sm ${
+                      h.kpiCounted
+                        ? 'border-emerald-200 bg-emerald-50'
+                        : 'border-gray-100 bg-surface'
+                    }`}
+                  >
+                    <div className="mb-1 flex flex-wrap items-center gap-1.5">
+                      {h.kpiCounted ? (
+                        <Badge variant="success">в KPI</Badge>
+                      ) : (
+                        <Badge variant="default">не в KPI</Badge>
+                      )}
+                      {h.kind === 'manager' && <Badge variant="warning">работа менеджера</Badge>}
+                      {h.kind === 'client' && <Badge variant="info">шаг клиента</Badge>}
+                      {h.kind === 'noise' && <Badge variant="default">шум</Badge>}
+                      <span className="text-xs text-muted">
+                        {h.date} · {h.typeLabel}
+                      </span>
+                    </div>
+                    <p className="text-text">{h.text}</p>
+                    <p className="mt-1 text-xs text-muted">{h.why}</p>
+                    {h.rewrite && (
+                      <p className="mt-2 rounded-md bg-white px-2 py-1.5 text-xs text-secondary">
+                        Как переписать: {h.rewrite}
                       </p>
                     )}
                   </li>
@@ -313,14 +356,26 @@ export function KpiLeadAudit({
             )}
           </div>
 
-          <div className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-3">
-            <h4 className="text-sm font-semibold text-text">Что делать / рекомендации</h4>
-            <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-text">
-              {explanation.recommendations.map((r) => (
-                <li key={r}>{r}</li>
-              ))}
-            </ul>
-          </div>
+          <details className="rounded-lg border border-gray-100 bg-background px-3 py-2">
+            <summary className="cursor-pointer text-sm font-medium text-secondary">
+              Полная проверка по ступеням (журнал, Groq, полки)
+            </summary>
+            <div className="mt-3 space-y-2">
+              {explanation.gates
+                .filter((g) => g.id !== 'human' && g.id !== 'score')
+                .map((g) => (
+                  <div key={g.id} className={`rounded-lg border px-3 py-2 ${gateClass(g.status)}`}>
+                    <p className="text-sm font-semibold text-text">
+                      {g.title}{' '}
+                      <span className="font-normal text-xs uppercase tracking-wide text-muted">
+                        {gateWord(g.status)}
+                      </span>
+                    </p>
+                    <p className="mt-1 text-sm leading-relaxed text-text">{g.detail}</p>
+                  </div>
+                ))}
+            </div>
+          </details>
 
           {explanation.counted && explanation.shelvesFromLog.length > 0 && (
             <p className="text-sm text-muted">

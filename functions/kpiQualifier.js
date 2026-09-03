@@ -43,6 +43,7 @@ const DEFAULT_KPI_PROMPT = `Ты аналитик CRM текстильной к�
 {monthHistory}
 
 ВЕСОМЫЙ МОМЕНТ (клиент):
+- запросил КП / коммерческое на конкретный артикул (именно КЛИЕНТ запросил, не менеджер отправила)
 - запросил образцы конкретных артикулов
 - прислал ТЗ / спецификацию
 - запросил параметры (плотность, состав, ширина)
@@ -56,10 +57,14 @@ const DEFAULT_KPI_PROMPT = `Ты аналитик CRM текстильной к�
 - запросил договор, согласовал спецификацию заказа
 - предоплата, подпись, явно движется вперёд
 
-НЕ СЧИТАТЬ:
-- менеджер отправил прайс / напомнил / подготовил образцы без подтверждения
+НЕ СЧИТАТЬ (это работа менеджера: лид АКТИВНЫЙ, но не KPI):
+- менеджер отправила КП / коммерческое / прайс / каталог / «написала» / «шаг выполнен»
+- этап «КП отправлено» сам по себе
+- менеджер подготовила образцы, а клиент получение не подтвердил
 - клиент спросил цену в общем или «что есть в ассортименте»
 - «подумаем», «позже», «на паузе», «ждём решения» без действия
+
+Считать шаг только если в тексте есть действие КЛИЕНТА: запросила / подтвердила / согласовала / прислала ТЗ. «Я отправила КП Шахнозе» = 0 шагов клиента.
 
 qualifies = true только если significantMoments >= {minKpiMoments}
 
@@ -92,7 +97,13 @@ function formatHistory(history) {
     .join('\n')
 }
 
-function buildKpiPrompt(template, input) {
+function resolveKpiPrompt(config) {
+  const stored = String(config?.kpiPrompt || '')
+  const legacy =
+    !stored.trim() ||
+    !/отправил\w*\s+кп|кп\s*\/\s*коммерческ|этап «кп отправлено»/i.test(stored)
+  return legacy ? DEFAULT_KPI_PROMPT : stored
+}
   return String(template || DEFAULT_KPI_PROMPT)
     .split('{clientName}')
     .join(input.clientName)
@@ -197,7 +208,7 @@ async function groqQualify(groq, prompt) {
 async function qualifyLeadForKpi(db, groq, client, history, config, month, options = {}) {
   const minMoments = Math.max(1, Number(config.minKpiMoments) || DEFAULT_MIN_MOMENTS)
   const months = resolveActiveMonths(client, month)
-  const promptTemplate = config.kpiPrompt || DEFAULT_KPI_PROMPT
+  const promptTemplate = resolveKpiPrompt(config)
 
   if (months > 3) {
     await updateClientKpi(db, client.id, {
@@ -292,7 +303,7 @@ async function testKpiQualification(db, groq, client, history, config, month) {
     minKpiMoments: minMoments,
     monthHistory: formatHistory(history),
   }
-  const prompt = buildKpiPrompt(config.kpiPrompt || DEFAULT_KPI_PROMPT, input)
+  const prompt = buildKpiPrompt(resolveKpiPrompt(config), input)
   const raw = await groqQualify(groq, prompt)
   const parsed = parseKpiResult(raw, minMoments)
   return {

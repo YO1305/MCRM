@@ -8,7 +8,9 @@ import {
   AI_ACTIVITY_DOC_ID,
   DEFAULT_AI_ACTIVITY_CONFIG,
   DEFAULT_ACTIVITY_PROMPT,
+  DEFAULT_KPI_PROMPT,
   isLegacyActivityPrompt,
+  isLegacyKpiPrompt,
   type AiActivityConfig,
 } from '@/types/aiActivity.types'
 
@@ -23,7 +25,10 @@ function normalizeConfig(raw: Partial<AiActivityConfig> | undefined): AiActivity
         : raw.activityPrompt,
     isActive: raw?.isActive !== false,
     minKpiMoments: Math.max(1, Number(raw?.minKpiMoments ?? DEFAULT_AI_ACTIVITY_CONFIG.minKpiMoments) || 3),
-    kpiPrompt: raw?.kpiPrompt || DEFAULT_AI_ACTIVITY_CONFIG.kpiPrompt,
+    kpiPrompt:
+      !raw?.kpiPrompt || isLegacyKpiPrompt(raw.kpiPrompt)
+        ? DEFAULT_KPI_PROMPT
+        : raw.kpiPrompt,
   }
 }
 

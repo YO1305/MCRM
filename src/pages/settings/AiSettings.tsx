@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, Brain, Play } from 'lucide-react'
 import { collection, getDocs, limit, orderBy, query, where } from 'firebase/firestore'
 import { useAuth } from '@/hooks/useAuth'
@@ -31,8 +31,9 @@ import { todayISO, toISODate } from '@/utils/dates'
 import { POSITION_LABELS } from '@/constants/positions'
 import { AiActivitySettings } from '@/pages/settings/AiActivitySettings'
 import { AiKpiSettings } from '@/pages/settings/AiKpiSettings'
+import { KpiLeadAudit } from '@/components/kpi/KpiLeadAudit'
 
-type TabId = 'main' | 'prompt' | 'managers' | 'history' | 'activity' | 'kpi'
+type TabId = 'main' | 'prompt' | 'managers' | 'history' | 'activity' | 'kpi' | 'audit'
 
 function formatWhen(value: unknown): string {
   if (!value) return '—'
@@ -44,12 +45,17 @@ function formatWhen(value: unknown): string {
 
 export function AiSettings() {
   const { user, isAdmin } = useAuth()
+  const [searchParams] = useSearchParams()
   const { config, loading, changeLog, saveConfig, resetToDefaults } = useAiConfig()
   const { users } = useUsers(isAdmin)
   const { clients } = useClients()
   const { tasks: aiTasks } = useAiTasks()
 
-  const [tab, setTab] = useState<TabId>('main')
+  const [tab, setTab] = useState<TabId>(() => {
+    const q = searchParams.get('tab')
+    if (q === 'audit' || q === 'kpi' || q === 'activity') return q
+    return 'main'
+  })
   const [form, setForm] = useState<AiConfig | null>(null)
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState('')
@@ -257,6 +263,7 @@ export function AiSettings() {
             ['prompt', 'Промпт'],
             ['activity', 'Активность лидов'],
             ['kpi', 'KPI квалификация'],
+            ['audit', 'Разбор клиентов'],
             ['managers', 'Менеджеры'],
             ['history', 'История'],
           ] as const
@@ -525,6 +532,7 @@ export function AiSettings() {
 
       {tab === 'activity' && <AiActivitySettings />}
       {tab === 'kpi' && <AiKpiSettings />}
+      {tab === 'audit' && <KpiLeadAudit clients={clients} />}
 
       {tab === 'managers' && (
         <Card className="space-y-4">

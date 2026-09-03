@@ -13,6 +13,7 @@ import { KpiPasswordGate, isKpiUnlocked } from '@/components/kpi/KpiPasswordGate
 import { KpiHeadPanel } from '@/components/kpi/KpiHeadPanel'
 import { KpiDesignerPanel } from '@/components/kpi/KpiDesignerPanel'
 import { KpiAssistantPanel } from '@/components/kpi/KpiAssistantPanel'
+import { KpiLeadAudit } from '@/components/kpi/KpiLeadAudit'
 import { LEAD_CATEGORIES } from '@/constants/clientMeta'
 import {
   KPI_ROLE_TEMPLATES,
@@ -53,7 +54,7 @@ function leadCats(lead: { categories?: LeadCategory[]; category?: LeadCategory }
   return lead.category ? [lead.category] : []
 }
 
-type DeptTab = 'leads' | 'head' | 'designer' | 'assistant'
+type DeptTab = 'leads' | 'audit' | 'head' | 'designer' | 'assistant'
 
 export function KPI() {
   const { user } = useAuth()
@@ -91,6 +92,7 @@ export function KPI() {
         {(
           [
             ['leads', 'Айгуль / Кундуз'],
+            ['audit', 'Разбор лидов'],
             ['head', 'Начальник'],
             ['designer', 'Дизайнер'],
             ['assistant', 'Ассистент'],
@@ -109,6 +111,7 @@ export function KPI() {
         ))}
       </div>
 
+      {deptTab === 'audit' && <KpiLeadAudit clients={clients} />}
       {deptTab === 'head' && <KpiHeadPanel month={month} />}
       {deptTab === 'designer' && <KpiDesignerPanel month={month} />}
       {deptTab === 'assistant' && <KpiAssistantPanel month={month} />}

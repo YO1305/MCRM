@@ -90,6 +90,24 @@ export function Settings() {
             </div>
           </Card>
 
+          <Card className="space-y-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold">Разбор KPI-лидов</h2>
+                <p className="mt-1 text-xs text-muted">
+                  По каждому клиенту воронки: почему засчитали в лид KPI за месяц и почему нет.
+                  Журнал, Groq, рекомендации.
+                </p>
+              </div>
+              <Link
+                to="/settings/ai?tab=audit"
+                className="inline-flex items-center rounded-lg bg-secondary px-3 py-2 text-xs font-semibold text-white hover:opacity-90"
+              >
+                Открыть разбор
+              </Link>
+            </div>
+          </Card>
+
           <CountriesAdminPanel />
           <CrmStagesAdminPanel />
           <DepartmentsManager />

@@ -1,4 +1,3 @@
-import { jsPDF } from 'jspdf'
 import type { FabricLabel, LabelLocale } from '@/types/label.types'
 import {
   LABEL_HEIGHT_MM,
@@ -308,6 +307,7 @@ export async function downloadLabelsPdf(
     )
   }
 
+  const { jsPDF } = await import('jspdf')
   const pdf = new jsPDF({
     orientation: 'landscape',
     unit: 'mm',

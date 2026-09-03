@@ -14,8 +14,6 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks(id) {
-          if (id.includes('node_modules/xlsx')) return 'xlsx'
-          if (id.includes('node_modules/jspdf')) return 'jspdf'
           if (id.includes('node_modules/firebase')) return 'firebase'
         },
       },

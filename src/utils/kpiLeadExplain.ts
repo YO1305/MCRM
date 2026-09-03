@@ -4,7 +4,7 @@ import { resolveKpiCategories } from '@/constants/leadProducts'
 import type { Client, ClientHistoryEntry } from '@/types/client.types'
 import type { KpiLeadLog, LeadCategory } from '@/types/kpiLead.types'
 import { calculateActiveDaysFromHistory } from '@/utils/groqLeadActivity'
-import { classifyLeadHistoryEntry, isPauseText, KPI_SKIP_TYPES, type LeadStepKind } from '@/utils/kpiLeadSteps'
+import { classifyLeadHistoryEntry, evaluateKpiLead, isPauseText, KPI_SKIP_TYPES, type LeadStepKind } from '@/utils/kpiLeadSteps'
 
 const FINAL_STAGES = new Set(['deal', 'rejected', 'failed', 'abandoned'])
 
@@ -203,6 +203,7 @@ export function explainKpiLead(opts: {
   const leadStepCount = historyLines.filter((h) => h.kpiCounted).length
   const clientStepCount = leadStepCount
   const needMoreSteps = Math.max(0, minKpiMoments - leadStepCount)
+  const score = evaluateKpiLead(monthEntries, minKpiMoments)
   const firstName = (client.name || 'клиент').split(/\s+/)[0]
 
   const gates: KpiExplainGate[] = []
@@ -220,10 +221,10 @@ export function explainKpiLead(opts: {
     blockingReason = `Не засчитан: за ${formatMonthHuman(month)} в истории нет ни одной рабочей записи. Что было в Telegram — система не видит.`
   } else if (isFinal && !autoDeal) {
     blockingReason = `Не засчитан: этап «${stageLabel(client.stage)}» в квалификацию не берётся.`
-  } else if (leadStepCount < minKpiMoments) {
-    blockingReason = `Не засчитан: лид активный, но шагов менеджера по клиенту ${leadStepCount} из ${minKpiMoments}. Одна запись = активный. Три рабочие записи (КП, звонок, образцы, этап, комментарий) = KPI-лид. Фразы от клиента не нужны.`
+  } else if (!score.qualifies) {
+    blockingReason = score.reason
   } else {
-    blockingReason = `Не засчитан: шагов менеджера уже ${leadStepCount}, но в журнале зарплаты за ${month} записи нет. На дашборде нажмите «Переанализировать месяц».`
+    blockingReason = `Не засчитан: правила по шагам уже выполнены, но в журнале зарплаты за ${month} записи нет. На дашборде нажмите «Переанализировать месяц».`
   }
 
   gates.push({
@@ -236,11 +237,13 @@ export function explainKpiLead(opts: {
   gates.push({
     id: 'score',
     title: 'Что учтено / что нет',
-    status: counted ? 'pass' : leadStepCount >= minKpiMoments ? 'info' : 'fail',
-    detail: `За ${formatMonthHuman(month)}: записей ${monthEntries.length}. Рабочих (активный): ${managerWorkCount}. Шагов менеджера по клиенту (KPI): ${leadStepCount} из ${minKpiMoments}. ${
+    status: counted ? 'pass' : score.qualifies ? 'info' : 'fail',
+    detail: `За ${formatMonthHuman(month)}: записей ${monthEntries.length}. Рабочих (активный): ${managerWorkCount}. Содержательных шагов KPI: ${leadStepCount} из ${minKpiMoments}. Видов работы: ${score.types}. Дней с шагами: ${score.days}. Сильный шаг: ${score.hasStrong ? 'да' : 'нет'}. ${
       counted
         ? 'Порог выполнен — клиент в зарплате.'
-        : `До KPI-лида не хватает ${needMoreSteps} шаг(а) в Истории.`
+        : score.qualifies
+          ? 'Правила шагов выполнены — нужен переанализ месяца.'
+          : score.reason
     }`,
   })
 
@@ -366,7 +369,7 @@ export function explainKpiLead(opts: {
 
   if (!counted && journalLabel === 'active' && activeMonths <= 3 && !isFinal) {
     howToFix.push(
-      `В карточке ${firstName} → История допишите ещё ${needMoreSteps || minKpiMoments} факт(а) работы с клиентом.`,
+      `В карточке ${firstName} → История нужны содержательные шаги: КП, звонок, образцы, смена этапа — не три раза «написала». Минимум ${minKpiMoments} таких шагов, 2 разных вида работы, и либо 2 дня, либо 3 вида за один день.`,
     )
     howToFix.push(
       `Пример 1: «Отправила КП ${firstName} на сатин 40/1, ширина 240, 2000 м».`,
@@ -388,7 +391,7 @@ export function explainKpiLead(opts: {
     howToFix.push(
       'Проверьте дату открытия лида. Если в CRM попали позже реального старта — поставьте день первого общения. Если лид правда 4+ месяца — в KPI он уже не идёт, это правило.',
     )
-  } else if (!counted && clientStepCount >= minKpiMoments) {
+  } else if (!counted && score.qualifies) {
     howToFix.push(
       `На дашборде выберите ${formatMonthHuman(month)} и нажмите «Переанализировать месяц» — шагов менеджера уже хватает.`,
     )

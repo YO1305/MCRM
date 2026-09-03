@@ -1,5 +1,5 @@
 const { FieldValue } = require('firebase-admin/firestore')
-const { countKpiLeadSteps, describeKpiSteps } = require('./kpiLeadSteps')
+const { evaluateKpiLead } = require('./kpiLeadSteps')
 
 const FINAL_STAGES = new Set(['deal', 'rejected', 'failed', 'abandoned'])
 const DEFAULT_MIN_MOMENTS = 3
@@ -8,10 +8,10 @@ const DEFAULT_KPI_PROMPT = `Отбор KPI считает программа, н
 
 Правило:
 1) Активный = в Истории месяца есть работа менеджера.
-2) KPI-лид = активный + не старше 3 месяцев + минимум {minKpiMoments} шагов менеджера по этому клиенту (КП, звонок, образцы, этап, комментарий, визит).
+2) KPI-лид = активный + не старше 3 месяцев + минимум {minKpiMoments} СОДЕРЖАТЕЛЬНЫХ шагов (КП, звонок, образцы, этап, визит, комментарий с сутью). Плюс: есть сильный шаг, минимум 2 вида работы, и либо 2 разных дня, либо 3 вида в один день.
 3) Сделка в 1-м месяце = сразу.
-4) «Клиент создан» и «на паузе» не считаются.
-5) Фразы от клиента не нужны: «отправила КП Шахнозе» — это шаг.`
+4) «Клиент создан», «на паузе», «написала» без сути — не шаг KPI.
+5) Фразы от клиента не нужны. Цель: выполнение плана по лидам около 80–90%, не сверхвыполнение за счёт пустых комментариев.`
 
 function resolveActiveMonths(client, month) {
   const raw = client.openedDate || client.openedMonth || ''
@@ -30,10 +30,7 @@ function leadCategories(client) {
 }
 
 function scoreFromHistory(history, minMoments) {
-  const significantMoments = countKpiLeadSteps(history)
-  const qualifies = significantMoments >= minMoments
-  const reason = describeKpiSteps(history, minMoments)
-  return { significantMoments, qualifies, reason }
+  return evaluateKpiLead(history || [], minMoments)
 }
 
 async function findMonthLog(db, clientId, month) {

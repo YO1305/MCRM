@@ -115,15 +115,15 @@ export function AiKpiSettings() {
           KPI квалификация
         </h2>
         <p className="mt-1 text-sm text-muted">
-          Из активных лидов Groq выбирает тех, где клиент сделал конкретные шаги (ТЗ, образцы,
-          объём, договор). Действия менеджера (прайс, напоминание) не считаются.
+          Из активных лидов программа считает шаги менеджера по клиенту (КП, звонок, образцы, этап,
+          комментарий). Три шага — KPI-лид. ИИ это не решает.
         </p>
       </div>
 
       {msg && <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{msg}</p>}
 
       <Input
-        label="Минимум весомых моментов для KPI"
+        label="Минимум шагов менеджера по клиенту"
         type="number"
         min={1}
         max={10}
@@ -131,19 +131,20 @@ export function AiKpiSettings() {
         onChange={(e) => setMinKpiMoments(Number(e.target.value))}
       />
       <p className="text-xs text-muted">
-        Сколько действий клиента за месяц нужно, чтобы лид попал в факт KPI. 4-й месяц работы —
-        не засчитается. Сделка в 1-м месяце — зачёт сразу.
+        Сколько рабочих записей в Истории нужно, чтобы лид попал в факт KPI. КП, звонок, образцы,
+        этап — всё считается. Фразы от клиента не нужны. 4-й месяц — нет. Сделка в 1-м месяце —
+        сразу.
       </p>
 
       <Textarea
-        label="Промпт для KPI квалификации"
-        rows={16}
+        label="Правило отбора (программа считает сама, ИИ не решает)"
+        rows={10}
         value={kpiPrompt}
         onChange={(e) => setKpiPrompt(e.target.value)}
       />
 
       <div className="space-y-2 rounded-lg border border-gray-100 bg-background p-3">
-        <h3 className="text-sm font-semibold text-text">Тест KPI</h3>
+        <h3 className="text-sm font-semibold text-text">Тест отбора</h3>
         <select
           className="w-full rounded-lg border border-gray-200 bg-surface px-3 py-2 text-sm"
           value={testClientId}

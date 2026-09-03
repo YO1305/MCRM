@@ -27,14 +27,14 @@ interface KpiMomentsMeterProps {
   current?: boolean
 }
 
-/** Managers: progress toward 3 client moments, without pass/fail. */
+/** Managers: progress toward N manager steps on the lead. */
 export function KpiMomentsMeter({ moments, minMoments = 3, current }: KpiMomentsMeterProps) {
   if (!current) return null
   const n = typeof moments === 'number' ? moments : 0
   const shown = n >= 900 ? minMoments : n
   return (
     <p className="text-[11px] font-medium text-muted">
-      Весомых моментов: {shown} / {minMoments}
+      Шагов по лиду: {shown} / {minMoments}
     </p>
   )
 }

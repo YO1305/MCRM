@@ -123,9 +123,8 @@ export function KpiLeadAudit({
         <div>
           <h2 className="text-lg font-semibold text-text">Разбор KPI-лидов по клиенту</h2>
           <p className="mt-1 text-sm text-muted">
-            Найдите клиента (например Шахноза). Справа увидите: сколько строк — работа менеджера
-            (активный лид), сколько — шаги клиента (KPI), и почему строка не засчитана. Отправка КП
-            делает клиента активным, но не KPI-лидом.
+            Найдите клиента (например Шахноза). Считаются шаги менеджера по этому клиенту:
+            КП, звонок, образцы, этап, комментарий. Три таких шага — KPI-лид. Фразы от клиента не нужны.
           </p>
         </div>
         <select
@@ -272,11 +271,11 @@ export function KpiLeadAudit({
           <div className="grid gap-2 sm:grid-cols-3">
             <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-center">
               <p className="text-2xl font-semibold text-gray-900">{explanation.managerWorkCount}</p>
-              <p className="text-xs text-gray-500">работа менеджера (КП, «написала»)</p>
+              <p className="text-xs text-gray-500">рабочих записей (активный)</p>
             </div>
             <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-center">
-              <p className="text-2xl font-semibold text-emerald-800">{explanation.clientStepCount}</p>
-              <p className="text-xs text-emerald-800">шагов клиента из {minKpiMoments}</p>
+              <p className="text-2xl font-semibold text-emerald-800">{explanation.leadStepCount}</p>
+              <p className="text-xs text-emerald-800">шагов по лиду из {minKpiMoments}</p>
             </div>
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-center">
               <p className="text-2xl font-semibold text-amber-800">{explanation.needMoreSteps}</p>
@@ -336,20 +335,15 @@ export function KpiLeadAudit({
                       ) : (
                         <Badge variant="default">не в KPI</Badge>
                       )}
-                      {h.kind === 'manager' && <Badge variant="warning">работа менеджера</Badge>}
-                      {h.kind === 'client' && <Badge variant="info">шаг клиента</Badge>}
-                      {h.kind === 'noise' && <Badge variant="default">шум</Badge>}
+                      {h.kpiCounted && <Badge variant="info">шаг по лиду</Badge>}
+                      {h.kind === 'wait' && <Badge variant="warning">ожидание</Badge>}
+                      {h.kind === 'noise' && <Badge variant="default">не шаг</Badge>}
                       <span className="text-xs text-muted">
                         {h.date} · {h.typeLabel}
                       </span>
                     </div>
                     <p className="text-text">{h.text}</p>
                     <p className="mt-1 text-xs text-muted">{h.why}</p>
-                    {h.rewrite && (
-                      <p className="mt-2 rounded-md bg-white px-2 py-1.5 text-xs text-secondary">
-                        Как переписать: {h.rewrite}
-                      </p>
-                    )}
                   </li>
                 ))}
               </ul>

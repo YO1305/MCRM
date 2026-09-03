@@ -277,7 +277,7 @@ async function loadConfig(db) {
     minKpiMoments: Math.max(1, Number(data.minKpiMoments) || DEFAULT_MIN_MOMENTS),
     kpiPrompt:
       !String(data.kpiPrompt || '').trim() ||
-      !/Отбор KPI считает программа/i.test(String(data.kpiPrompt || ''))
+      !/содержательн|два разных вида работы|сильный шаг/i.test(String(data.kpiPrompt || ''))
         ? DEFAULT_KPI_PROMPT
         : data.kpiPrompt,
   }

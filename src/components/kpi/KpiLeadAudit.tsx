@@ -124,7 +124,7 @@ export function KpiLeadAudit({
           <h2 className="text-lg font-semibold text-text">Разбор KPI-лидов по клиенту</h2>
           <p className="mt-1 text-sm text-muted">
             Найдите клиента (например Шахноза). Считаются шаги менеджера по этому клиенту:
-            КП, звонок, образцы, этап, комментарий. Три таких шага — KPI-лид. Фразы от клиента не нужны.{' '}
+            КП, звонок, образцы, этап. Три содержательных шага разного вида, не три «написала». Цель — план около 80–90%, не сверхвыполнение.{' '}
             <a
               className="text-secondary underline"
               href="/Kak_otbor_aktivnost_i_lidy.doc"
@@ -343,6 +343,7 @@ export function KpiLeadAudit({
                         <Badge variant="default">не в KPI</Badge>
                       )}
                       {h.kpiCounted && <Badge variant="info">шаг по лиду</Badge>}
+                      {h.kind === 'light' && <Badge variant="warning">только активность</Badge>}
                       {h.kind === 'wait' && <Badge variant="warning">ожидание</Badge>}
                       {h.kind === 'noise' && <Badge variant="default">не шаг</Badge>}
                       <span className="text-xs text-muted">

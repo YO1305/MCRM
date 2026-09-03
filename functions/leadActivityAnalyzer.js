@@ -274,10 +274,10 @@ async function loadConfig(db) {
     minActiveDays: Math.max(1, Number(data.minActiveDays) || DEFAULT_MIN_DAYS),
     activityPrompt: !storedPrompt.trim() || legacyPrompt ? DEFAULT_ACTIVITY_PROMPT : storedPrompt,
     isActive: data.isActive !== false,
-    minKpiMoments: Math.max(1, Number(data.minKpiMoments) || DEFAULT_MIN_MOMENTS),
+    minKpiMoments: Math.max(4, Number(data.minKpiMoments) || DEFAULT_MIN_MOMENTS),
     kpiPrompt:
       !String(data.kpiPrompt || '').trim() ||
-      !/содержательн|два разных вида работы|сильный шаг/i.test(String(data.kpiPrompt || ''))
+      !/4 содержательных шага|3 разных дня/i.test(String(data.kpiPrompt || ''))
         ? DEFAULT_KPI_PROMPT
         : data.kpiPrompt,
   }

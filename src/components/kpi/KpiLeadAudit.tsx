@@ -55,7 +55,7 @@ export function KpiLeadAudit({
   initialMonth?: string
 }) {
   const { config } = useAiActivityConfig()
-  const minKpiMoments = config?.minKpiMoments ?? 3
+  const minKpiMoments = config?.minKpiMoments ?? 4
   const [month, setMonth] = useState(initialMonth || previousMonthKey() || getCurrentMonth())
   const { leads } = useKpiLeads('all', month)
   const [q, setQ] = useState('')
@@ -124,7 +124,7 @@ export function KpiLeadAudit({
           <h2 className="text-lg font-semibold text-text">Разбор KPI-лидов по клиенту</h2>
           <p className="mt-1 text-sm text-muted">
             Найдите клиента (например Шахноза). Считаются шаги менеджера по этому клиенту:
-            КП, звонок, образцы, этап. Три содержательных шага разного вида, не три «написала». Цель — план около 80–90%, не сверхвыполнение.{' '}
+            4 шага, 3 разных дня, звонок или визит, и КП либо образцы. Так план спокойно 70–80%, а не 160%.{' '}
             <a
               className="text-secondary underline"
               href="/Kak_otbor_aktivnost_i_lidy.doc"

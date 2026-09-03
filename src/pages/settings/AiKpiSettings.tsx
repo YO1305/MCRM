@@ -14,7 +14,7 @@ import { formatMonthNominative } from '@/utils/groqLeadActivity'
 export function AiKpiSettings() {
   const { config, loading, saveConfig } = useAiActivityConfig()
   const { clients } = useClients()
-  const [minKpiMoments, setMinKpiMoments] = useState(3)
+  const [minKpiMoments, setMinKpiMoments] = useState(4)
   const [kpiPrompt, setKpiPrompt] = useState(DEFAULT_KPI_PROMPT)
   const [saving, setSaving] = useState(false)
   const [running, setRunning] = useState(false)
@@ -49,7 +49,7 @@ export function AiKpiSettings() {
     setMsg('')
     try {
       await saveConfig({
-        minKpiMoments: Math.max(1, Number(minKpiMoments) || 3),
+        minKpiMoments: Math.max(4, Number(minKpiMoments) || 4),
         kpiPrompt,
       })
       setMsg('Сохранено')
@@ -69,7 +69,7 @@ export function AiKpiSettings() {
         testKpi: true,
         clientId: testClientId,
         kpiPrompt,
-        minKpiMoments: Math.max(1, Number(minKpiMoments) || 3),
+        minKpiMoments: Math.max(4, Number(minKpiMoments) || 4),
       })
       if (!data.result) throw new Error('Пустой ответ')
       setTestResult(data.result)
@@ -115,8 +115,8 @@ export function AiKpiSettings() {
           KPI квалификация
         </h2>
         <p className="mt-1 text-sm text-muted">
-          Из активных лидов программа считает содержательные шаги (КП, звонок, образцы, этап).
-          Короткие «написала» не набивают план. Нужны 3 шага, сильный шаг, 2 вида работы.
+          KPI-лид: 4 содержательных шага, 3 разных дня, звонок или визит, КП или образцы.
+          Цель — спокойно 70–80% плана, не 160–200%.
         </p>
       </div>
 

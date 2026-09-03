@@ -114,7 +114,28 @@ function entryDay(entry) {
   return ''
 }
 
-function evaluateKpiLead(entries, minMoments) {
+const ABANDONED_SILENCE_DAYS = 10
+
+function monthCutoffDay(month, today) {
+  today = today || new Date()
+  if (!/^\d{4}-\d{2}$/.test(String(month || ''))) return ''
+  const [y, m] = month.split('-').map(Number)
+  const last = new Date(y, m, 0)
+  const end = `${y}-${String(m).padStart(2, '0')}-${String(last.getDate()).padStart(2, '0')}`
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+  if (todayStr.startsWith(month) && todayStr < end) return todayStr
+  return end
+}
+
+function daysBetweenIso(from, to) {
+  if (!from || from.length < 10 || !to || to.length < 10) return 0
+  const a = Date.parse(`${from.slice(0, 10)}T00:00:00`)
+  const b = Date.parse(`${to.slice(0, 10)}T00:00:00`)
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return 0
+  return Math.round((b - a) / 86400000)
+}
+
+function evaluateKpiLead(entries, minMoments, month) {
   const rows = (entries || []).map((e) => ({
     ...classifyLeadHistoryEntry(e),
     type: String(e.type || ''),
@@ -136,15 +157,31 @@ function evaluateKpiLead(entries, minMoments) {
       /кп|коммерческ|прайс|образц/i.test(s.text),
   )
 
+  const lastKpiDay =
+    steps
+      .map((s) => s.day)
+      .filter((d) => d.length >= 10)
+      .sort()
+      .slice(-1)[0] || ''
+  const inferredMonth = month || lastKpiDay.slice(0, 7)
+  const cutoff = monthCutoffDay(inferredMonth)
+  const silenceDays = lastKpiDay && cutoff ? daysBetweenIso(lastKpiDay, cutoff) : 0
+  const abandoned = Boolean(lastKpiDay) && silenceDays >= ABANDONED_SILENCE_DAYS
+
   const parts = []
   if (n < minMoments) parts.push(`содержательных шагов ${n} из ${minMoments}`)
   if (days < 2) parts.push(`дней с работой ${days} из 2`)
   if (types < 2) parts.push(`видов работы ${types} из 2`)
+  if (abandoned) {
+    parts.push(
+      `после последней работы ${lastKpiDay} тишина ${silenceDays} дн. до ${cutoff} — лид заброшен, в KPI не идёт`,
+    )
+  }
 
-  const qualifies = n >= minMoments && days >= 2 && types >= 2
+  const qualifies = n >= minMoments && days >= 2 && types >= 2 && !abandoned
   const reason = qualifies
-    ? `Засчитан: ${n} шагов за ${days} дн., ${types} вида работы (как Шахноза: КП + этап + звонок).`
-    : `Не засчитан: ${parts.join('; ')}. Нужно: ${minMoments} содержательных шага, 2 разных дня и 2 разных вида работы. Звонок и КП вместе не обязательны.`
+    ? `Засчитан: ${n} шагов за ${days} дн., ${types} вида работы. Последняя работа ${lastKpiDay}, тишины ${silenceDays} дн. — лид не заброшен.`
+    : `Не засчитан: ${parts.join('; ')}. Нужно вести клиента до конца месяца, а не отправить КП и пропасть.`
 
   return {
     significantMoments: n,
@@ -155,11 +192,50 @@ function evaluateKpiLead(entries, minMoments) {
     hasStrong: hasCallOrVisit && hasCommercial,
     hasLive: hasCallOrVisit,
     hasOffer: hasCommercial,
+    silenceDays,
+    abandoned,
   }
 }
 
-function describeKpiSteps(entries, minMoments) {
-  return evaluateKpiLead(entries, minMoments).reason
+function describeKpiSteps(entries, minMoments, month) {
+  return evaluateKpiLead(entries, minMoments, month).reason
+}
+
+function kpiClockStart(client, history) {
+  if (isPauseText(client?.waitStatus)) return null
+  const saved = String(client?.workResumedDate || '').slice(0, 10)
+  if (/^\d{4}-\d{2}-\d{2}$/.test(saved)) return saved
+  const rows = (history || []).map((e) => ({
+    type: String(e.type || ''),
+    text: String(e.text || ''),
+    day: entryDay(e),
+  }))
+  const pauseDays = rows
+    .filter((r) => r.type === 'wait_status' && isPauseText(r.text) && r.day.length >= 10)
+    .map((r) => r.day)
+    .sort()
+  const lastPause = pauseDays[pauseDays.length - 1]
+  if (!lastPause) return String(client?.openedDate || '').slice(0, 10) || null
+  const after = rows
+    .filter((r) => r.day > lastPause && classifyLeadHistoryEntry(r).countsAsWork)
+    .map((r) => r.day)
+    .sort()
+  return after[0] || null
+}
+
+function historyForKpiClock(client, history) {
+  if (isPauseText(client?.waitStatus)) return []
+  const start = kpiClockStart(client, history)
+  if (!start) {
+    const hadPause = (history || []).some(
+      (e) => String(e.type || '') === 'wait_status' && isPauseText(e.text),
+    )
+    return hadPause ? [] : history || []
+  }
+  return (history || []).filter((e) => {
+    const day = entryDay(e)
+    return !day || day >= start
+  })
 }
 
 module.exports = {
@@ -167,5 +243,7 @@ module.exports = {
   countKpiLeadSteps,
   describeKpiSteps,
   evaluateKpiLead,
+  historyForKpiClock,
   isPauseText,
+  kpiClockStart,
 }

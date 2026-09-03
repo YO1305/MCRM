@@ -150,14 +150,14 @@ function hasCrmWork(entries) {
 }
 
 function classifyLabel(entries, waitStatus) {
+  if (isPauseText(waitStatus)) return 'paused'
   const work = hasCrmWork(entries)
-  if (isPauseText(waitStatus) && !work) return 'paused'
   if (work) return 'active'
   return 'passive'
 }
 
 function autoReason(entries, label) {
-  if (label === 'paused') return 'В карточке «на паузе», другой работы за месяц нет.'
+  if (label === 'paused') return 'На паузе — не трогаем, пока снова не начнут работу.'
   if (label === 'passive') return 'За этот месяц в истории нет работы по лиду.'
   const line = (entries || []).find((e) => !SKIP_TYPES.has(e.type) && e.text)
   if (line?.text) return String(line.text).replace(/\s+/g, ' ').slice(0, 220)
@@ -181,6 +181,14 @@ function hadRecentWork(client, month) {
 }
 
 function applyCarryForward(result, client, month, entries) {
+  if (isPauseText(client.waitStatus)) {
+    return {
+      label: 'paused',
+      score: 0,
+      reason: 'На паузе — не трогаем, пока снова не начнут работу.',
+      carried: false,
+    }
+  }
   if (result.label !== 'passive') return { ...result, carried: false }
   if (hasCrmWork(entries)) return { ...result, carried: false }
   if (!hadRecentWork(client, month)) return { ...result, carried: false }
@@ -278,7 +286,9 @@ async function loadConfig(db) {
     kpiPrompt:
       !String(data.kpiPrompt || '').trim() ||
       /4 содержательных шага|3 разных дня|все четыре пункта/i.test(String(data.kpiPrompt || '')) ||
-      !/3 содержательных шага/i.test(String(data.kpiPrompt || ''))
+      !/3 содержательных шага/i.test(String(data.kpiPrompt || '')) ||
+      !/на паузе/i.test(String(data.kpiPrompt || '')) ||
+      !/заброш|тишин/i.test(String(data.kpiPrompt || ''))
         ? DEFAULT_KPI_PROMPT
         : data.kpiPrompt,
   }
@@ -394,6 +404,39 @@ async function analyzeOneClient(db, groq, client, config, month, todayStr, optio
     monthHistory: history,
     waitStatus: client.waitStatus || null,
     daysSinceLastTouch: daysDiff(resolveTouchDate(client, todayStr), todayStr),
+  }
+  if (isPauseText(client.waitStatus)) {
+    const paused = {
+      label: 'paused',
+      score: 0,
+      reason: 'На паузе — не трогаем, пока снова не начнут работу.',
+      carried: false,
+    }
+    await db.collection('clients').doc(client.id).update({
+      activityScore: 0,
+      activityLabel: 'paused',
+      activityMonth: month,
+      activityAnalyzedAt: FieldValue.serverTimestamp(),
+      activityReason: paused.reason,
+      activeDaysThisMonth: 0,
+      activityCarriedFrom: null,
+      updatedAt: FieldValue.serverTimestamp(),
+    })
+    let kpi = null
+    try {
+      kpi = await qualifyLeadForKpi(
+        db,
+        groq,
+        { ...client, activityLabel: 'paused', activityMonth: month, activeDaysThisMonth: 0 },
+        history,
+        config,
+        month,
+        options,
+      )
+    } catch (err) {
+      console.error(`KPI step failed for ${client.id}:`, err)
+    }
+    return { ...paused, activeDaysCount: 0, input, kpi }
   }
   const groqResult = await analyzeWithGroq(groq, input, config)
   const classified = applyDayThreshold(

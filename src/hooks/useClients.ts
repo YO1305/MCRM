@@ -16,6 +16,7 @@ import {
 } from '@/constants/clientStages'
 import type { LeadCategory } from '@/types/kpiLead.types'
 import { getCurrentMonth, todayISO } from '@/utils/dates'
+import { isPauseText } from '@/utils/kpiLeadSteps'
 import { clientActionDeadline } from '@/utils/clientWork'
 import { activityPatch } from '@/utils/leadActivity'
 import { dismissPendingAiTasksForClient } from '@/utils/aiTasks'
@@ -417,13 +418,29 @@ export function useClients() {
       throw new Error('Укажите дату, когда сами напишете клиенту')
     }
 
+    const wasPause = isPauseText(client?.waitStatus)
+    const willPause = isPauseText(status)
+    const today = todayISO()
+
     const patch: Record<string, unknown> = {
       waitStatus: status,
       waitFollowUpDate: status ? date : null,
     }
 
+    if (willPause) {
+      patch.kpiQualified = false
+      patch.activityLabel = 'paused'
+      patch.activityReason = 'На паузе — не трогаем'
+    }
+
+    if (wasPause && !willPause) {
+      patch.workResumedDate = today
+      patch.activityLabel = 'active'
+      patch.activityReason = `Пауза снята ${today}. Отсчёт работы с этого дня.`
+    }
+
     // While waiting — plan the manager's own follow-up as next step if none yet
-    if (status && date && !client?.nextStep?.trim()) {
+    if (status && date && !client?.nextStep?.trim() && !willPause) {
       patch.nextStep = `Написать клиенту по статусу «${status}» — уточнить, когда будет ответ`
       patch.nextStepDeadline = date
     }
@@ -431,13 +448,15 @@ export function useClients() {
     await updateDocument(
       'clients',
       clientId,
-      activityPatch(client, patch, { movement: !!status, touch: !!status }),
+      activityPatch(client, patch, { movement: !!status && !willPause, touch: !willPause && (!!status || wasPause) }),
     )
     if (status) {
       await createDocument('client_history', {
         clientId,
         type: 'wait_status',
-        text: `Статус: ${status}. Сами напишем: ${date}`,
+        text: willPause
+          ? `На паузе. Пока не трогаем. Сами напишем: ${date}`
+          : `Статус: ${status}. Сами напишем: ${date}`,
         fromStage: null,
         toStage: null,
         authorId: user.id,
@@ -446,6 +465,16 @@ export function useClients() {
       void dismissPendingAiTasksForClient(clientId).catch((err) =>
         console.error('dismiss ai tasks failed', err),
       )
+    } else if (wasPause) {
+      await createDocument('client_history', {
+        clientId,
+        type: 'wait_status',
+        text: `Пауза снята. Отсчёт работы и KPI с ${today}.`,
+        fromStage: null,
+        toStage: null,
+        authorId: user.id,
+        authorName: user.name,
+      })
     }
   }
 

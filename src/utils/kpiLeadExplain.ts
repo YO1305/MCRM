@@ -4,7 +4,7 @@ import { resolveKpiCategories } from '@/constants/leadProducts'
 import type { Client, ClientHistoryEntry } from '@/types/client.types'
 import type { KpiLeadLog, LeadCategory } from '@/types/kpiLead.types'
 import { calculateActiveDaysFromHistory } from '@/utils/groqLeadActivity'
-import { classifyLeadHistoryEntry, evaluateKpiLead, isPauseText, KPI_SKIP_TYPES, type LeadStepKind } from '@/utils/kpiLeadSteps'
+import { classifyLeadHistoryEntry, evaluateKpiLead, historyForKpiClock, isPauseText, KPI_SKIP_TYPES, type LeadStepKind } from '@/utils/kpiLeadSteps'
 
 const FINAL_STAGES = new Set(['deal', 'rejected', 'failed', 'abandoned'])
 
@@ -109,7 +109,7 @@ function historyDay(createdAt: unknown): string | null {
 }
 
 export function resolveActiveMonthsForMonth(client: Client, month: string): number {
-  const raw = String(client.openedDate || client.openedMonth || '').slice(0, 7)
+  const raw = String(client.workResumedDate || client.openedDate || client.openedMonth || '').slice(0, 7)
   if (!/^\d{4}-\d{2}$/.test(raw) || !/^\d{4}-\d{2}$/.test(month)) return 1
   const [oy, om] = raw.split('-').map(Number)
   const [ty, tm] = month.split('-').map(Number)
@@ -130,8 +130,8 @@ export function classifyJournalLabel(
   monthEntries: { type?: string; text?: string | null }[],
   waitStatus: string | null | undefined,
 ): 'active' | 'passive' | 'paused' {
+  if (isPauseText(waitStatus)) return 'paused'
   const work = hasCrmWork(monthEntries)
-  if (isPauseText(waitStatus) && !work) return 'paused'
   if (work) return 'active'
   return 'passive'
 }
@@ -203,7 +203,7 @@ export function explainKpiLead(opts: {
   const leadStepCount = historyLines.filter((h) => h.kpiCounted).length
   const clientStepCount = leadStepCount
   const needMoreSteps = Math.max(0, minKpiMoments - leadStepCount)
-  const score = evaluateKpiLead(monthEntries, minKpiMoments)
+  const score = evaluateKpiLead(historyForKpiClock(client, monthEntries), minKpiMoments, month)
   const firstName = (client.name || 'клиент').split(/\s+/)[0]
 
   const gates: KpiExplainGate[] = []
@@ -221,10 +221,10 @@ export function explainKpiLead(opts: {
     }
   } else if (counted) {
     blockingReason = `Засчитан в зарплату за ${formatMonthHuman(month)}. Полки: ${catList(shelvesFromLog)}.`
+  } else if (journalLabel === 'paused') {
+    blockingReason = `На паузе — не трогаем. Когда снимете паузу и снова начнёте работу, отсчёт KPI начнётся с этого дня.`
   } else if (activeMonths > 3) {
     blockingReason = `Не засчитан, потому что это уже ${activeMonths}-й месяц ведения (лимит 3). Сколько бы работы ни было — в KPI-лид не идёт.`
-  } else if (journalLabel === 'paused') {
-    blockingReason = `Не засчитан: в карточке «на паузе» и за ${formatMonthHuman(month)} другой работы в истории нет.`
   } else if (journalLabel !== 'active') {
     blockingReason = `Не засчитан: за ${formatMonthHuman(month)} в истории нет ни одной рабочей записи. Что было в Telegram — система не видит.`
   } else if (isFinal && !autoDeal) {
@@ -319,7 +319,7 @@ export function explainKpiLead(opts: {
       journalLabel === 'active'
         ? `По журналу за ${formatMonthHuman(month)} есть рабочая запись (комментарий, звонок, этап, шаг, визит, образцы, продажи — кроме «создан» и чистой паузы). Метка: активный. Дней с записями: ${activeDays}. Это ещё НЕ KPI-лид, только допуск ко второй ступени.`
         : journalLabel === 'paused'
-          ? `В карточке ожидание «на паузе» и за ${formatMonthHuman(month)} другой работы в истории нет. Метка: на паузе. До KPI такие клиенты не допускаются.`
+          ? `В карточке стоит «на паузе». Не трогаем. Когда снимете паузу и начнёте работу — отсчёт с этого дня.`
           : `За ${formatMonthHuman(month)} в истории нет рабочей записи. Метка: пассивный. Написал в Telegram, но не занёс в CRM — для системы работы не было. В KPI не идёт.`,
   })
 
@@ -375,7 +375,11 @@ export function explainKpiLead(opts: {
       : `Пока не засчитан. Если бы засчитали, полки взялись бы из карточки: ${catList(shelvesFromCard)} (страна ${client.country || 'не указана'}, продукция ${(client.products || []).join(', ') || 'не указана'}).`,
   })
 
-  if (!counted && journalLabel === 'active' && activeMonths <= 3 && !isFinal) {
+  if (!counted && journalLabel === 'paused') {
+    howToFix.push(
+      'Клиент на паузе — его не пишем и в KPI не берём. Когда продолжите: снимите паузу в карточке. Отсчёт месяцев и шагов начнётся с этого дня.',
+    )
+  } else if (!counted && journalLabel === 'active' && activeMonths <= 3 && !isFinal) {
     howToFix.push(
       `В карточке ${firstName} → История: 3 содержательных шага, в 2 разных дня, 2 вида работы (как Шахноза: КП + этап + звонок). Не три «написала». Админ может нажать «Засчитать».`,
     )

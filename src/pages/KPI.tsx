@@ -193,13 +193,31 @@ function KpiPayrollPage({
 
   const countedIds = useMemo(() => new Set(leads.map((l) => l.clientId)), [leads])
 
+  const FINAL_STAGES = new Set(['deal', 'rejected', 'failed', 'abandoned'])
+
   const notCounted = useMemo(() => {
     if (!managerId) return []
     return clients
       .filter((c) => c.assignedTo === managerId)
+      // must be active this month (strict check)
       .filter((c) => groqActivityIsCurrent(c, month) && c.activityLabel === 'active')
+      // not already in the KPI log
       .filter((c) => !countedIds.has(c.id))
+      // not already qualified this month
       .filter((c) => !(c.kpiQualified === true && kpiMonthIsCurrent(c, month)))
+      // exclude final stages (rejected/failed/abandoned/deal)
+      .filter((c) => !FINAL_STAGES.has(c.stage))
+      // exclude paused (wait_status contains "на паузе")
+      .filter((c) => !String(c.waitStatus || '').toLowerCase().includes('на паузе'))
+      // exclude leads on 4th month or later
+      .filter((c) => {
+        const raw = String(c.openedDate || c.openedMonth || '').slice(0, 7)
+        if (!/^\d{4}-\d{2}$/.test(raw)) return true
+        const [oy, om] = raw.split('-').map(Number)
+        const [ty, tm] = month.split('-').map(Number)
+        const activeMonths = (ty - oy) * 12 + (tm - om) + 1
+        return activeMonths <= 3
+      })
       .sort((a, b) => a.name.localeCompare(b.name, 'ru'))
   }, [clients, managerId, month, countedIds])
 

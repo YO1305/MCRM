@@ -124,7 +124,14 @@ export function KpiLeadAudit({
           <h2 className="text-lg font-semibold text-text">Разбор KPI-лидов по клиенту</h2>
           <p className="mt-1 text-sm text-muted">
             Найдите клиента (например Шахноза). Считаются шаги менеджера по этому клиенту:
-            КП, звонок, образцы, этап, комментарий. Три таких шага — KPI-лид. Фразы от клиента не нужны.
+            КП, звонок, образцы, этап, комментарий. Три таких шага — KPI-лид. Фразы от клиента не нужны.{' '}
+            <a
+              className="text-secondary underline"
+              href="/Kak_otbor_aktivnost_i_lidy.doc"
+              download="Kak_otbor_aktivnost_i_kpi_lid.doc"
+            >
+              Скачать инструкцию Word
+            </a>
           </p>
         </div>
         <select

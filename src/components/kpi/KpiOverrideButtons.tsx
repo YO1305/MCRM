@@ -9,11 +9,13 @@ export function KpiOverrideButtons({
   month,
   log,
   counted,
+  onDone,
 }: {
   client: Client
   month: string
   log?: KpiLeadLog | null
   counted: boolean
+  onDone?: () => void
 }) {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
@@ -23,6 +25,7 @@ export function KpiOverrideButtons({
     setErr('')
     try {
       await fn()
+      onDone?.()
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Не удалось сохранить')
     } finally {

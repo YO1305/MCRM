@@ -4,6 +4,15 @@ const { qualifyLeadForKpi, testKpiQualification, DEFAULT_KPI_PROMPT, DEFAULT_MIN
 
 const FINAL_STAGES = new Set(['deal', 'rejected', 'failed', 'abandoned'])
 const REQUEST_DELAY_MS = 0
+const CLIENT_TIMEOUT_MS = 12000
+
+function withTimeout(promise, ms, label) {
+  let timer
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`TIMEOUT ${label}`)), ms)
+  })
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
+}
 const DEFAULT_MIN_DAYS = 10
 const GROQ_MODEL = 'llama-3.1-8b-instant'
 
@@ -549,41 +558,36 @@ async function runActivityAnalysis(db, apiKey, options = {}) {
   for (const client of batch) {
     if (Date.now() > deadline) break
     try {
-      await analyzeOneClient(db, groqClient, client, config, month, todayStr, options)
+      await withTimeout(
+        analyzeOneClient(db, groqClient, client, config, month, todayStr, options),
+        CLIENT_TIMEOUT_MS,
+        client.id,
+      )
       processed += 1
-      await new Promise((resolve) => setTimeout(resolve, REQUEST_DELAY_MS))
     } catch (error) {
       console.error(`Activity analysis error for ${client.id}:`, error)
       lastError = error?.message || String(error)
-      if (/RESOURCE_EXHAUSTED|Quota exceeded/i.test(lastError)) {
+      if (/RESOURCE_EXHAUSTED|Quota exceeded/i.test(lastError) && !/TIMEOUT/i.test(lastError)) {
         errors += 1
         break
       }
       try {
-        const failHistory = await loadMonthHistory(db, client.id, month).catch(() => [])
-        const failDays = calculateActiveDays(failHistory)
-        const failedRaw = applyDayThreshold(
-          { label: 'passive', score: 0, reason: 'Авто-оценка: сбой анализа' },
-          failDays,
-          config.minActiveDays,
-          client.waitStatus,
-          failHistory,
-        )
-        const failed = applyCarryForward(failedRaw, client, month, failHistory)
         await db.collection('clients').doc(client.id).update({
-          activityScore: failed.score,
-          activityLabel: failed.label,
+          activityScore: 0,
+          activityLabel: isPauseText(client.waitStatus) ? 'paused' : 'passive',
           activityMonth: month,
           activityAnalyzedAt: FieldValue.serverTimestamp(),
-          activityReason: failed.reason,
-          activeDaysThisMonth: failDays,
-          activityCarriedFrom: failed.carried ? previousYearMonth(month) : null,
+          activityReason: /TIMEOUT/i.test(lastError)
+            ? 'Пропущен: карточка слишком долго считалась, нажмите анализ ещё раз'
+            : 'Авто-оценка: сбой анализа',
+          activeDaysThisMonth: 0,
           updatedAt: FieldValue.serverTimestamp(),
         })
         processed += 1
       } catch (writeErr) {
         errors += 1
         lastError = writeErr?.message || lastError
+        if (/RESOURCE_EXHAUSTED|Quota exceeded/i.test(lastError)) break
       }
     }
   }

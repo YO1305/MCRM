@@ -220,8 +220,61 @@ export async function runActivityAnalysisNow(input?: {
   minActiveDays?: number
   kpiPrompt?: string
   minKpiMoments?: number
+  month?: string
+  maxClients?: number
+  runStartedAt?: string
+  timeBudgetMs?: number
 }): Promise<GroqActivityAnalysisResult> {
   return adminApi<GroqActivityAnalysisResult>('/api/ai-activity-analysis', input || {})
+}
+
+/** Keep calling until every open lead for the month is processed. */
+export async function runActivityAnalysisUntilDone(input?: {
+  month?: string
+  onProgress?: (info: { processed: number; remaining: number; month?: string }) => void
+}): Promise<GroqActivityAnalysisResult> {
+  const runStartedAt = new Date().toISOString()
+  let processed = 0
+  let errors = 0
+  let lastError = ''
+  let remaining = 0
+  let month = input?.month
+  let stuck = 0
+
+  for (let i = 0; i < 80; i += 1) {
+    const result = await runActivityAnalysisNow({
+      force: true,
+      month: input?.month,
+      runStartedAt,
+      maxClients: 22,
+      timeBudgetMs: 52000,
+    })
+    const batch = Number(result.processed) || 0
+    processed += batch
+    errors += Number(result.errors) || 0
+    if (result.lastError) lastError = result.lastError
+    remaining = Number(result.remaining) || 0
+    month = result.month || month
+    input?.onProgress?.({ processed, remaining, month })
+    if (remaining <= 0) {
+      return { ok: true, month, processed, remaining: 0, errors, lastError: lastError || undefined }
+    }
+    if (batch === 0) {
+      stuck += 1
+      if (stuck >= 2) break
+    } else {
+      stuck = 0
+    }
+  }
+
+  return {
+    ok: true,
+    month,
+    processed,
+    remaining,
+    errors,
+    lastError: lastError || (remaining > 0 ? 'Прогон остановился раньше, чем все карточки' : undefined),
+  }
 }
 
 /** Admin: test Groq prompt without saving an AI task. */

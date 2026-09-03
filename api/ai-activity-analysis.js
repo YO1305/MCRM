@@ -111,6 +111,9 @@ export default async function handler(req, res) {
       maxClients: Number(body.maxClients) || MAX_LEADS_PER_RUN,
       clientId: body.clientId ? String(body.clientId) : null,
       force: req.method === 'POST' ? body.force !== false : Boolean(body.force),
+      month: body.month ? String(body.month) : undefined,
+      runStartedAt: body.runStartedAt ? String(body.runStartedAt) : undefined,
+      timeBudgetMs: Number(body.timeBudgetMs) || 52000,
     })
     return res.status(200).json(result)
   } catch (err) {

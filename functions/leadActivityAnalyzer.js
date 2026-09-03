@@ -336,6 +336,35 @@ async function analyzeWithGroq(groq, input, config) {
   }
 }
 
+function resolveAnalysisMonth(options) {
+  const raw = String(options?.month || '').trim()
+  if (/^\d{4}-\d{2}$/.test(raw) && raw <= tashkentMonth()) return raw
+  return tashkentMonth()
+}
+
+function analyzedMs(client) {
+  const at = client.activityAnalyzedAt
+  if (!at) return 0
+  if (typeof at.toDate === 'function') {
+    try {
+      return at.toDate().getTime()
+    } catch {
+      /* fall through */
+    }
+  }
+  const seconds = at.seconds || at._seconds
+  if (typeof seconds === 'number') return seconds * 1000
+  const parsed = Date.parse(String(at))
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+function alreadyDoneThisRun(client, month, runStartedAt) {
+  if (client.activityMonth !== month) return false
+  const started = Date.parse(String(runStartedAt || ''))
+  if (!Number.isFinite(started)) return alreadyAnalyzedToday(client, tashkentToday(), month)
+  return analyzedMs(client) >= started - 2000
+}
+
 function alreadyAnalyzedToday(client, todayStr, month) {
   if (client.activityMonth !== month) return false
   const analyzed = formatHistoryDate(client.activityAnalyzedAt)
@@ -369,7 +398,10 @@ async function analyzeOneClient(db, groq, client, config, month, todayStr, optio
     client.waitStatus,
     history,
   )
-  const result = applyCarryForward(classified, client, month, history)
+  const result =
+    month === tashkentMonth()
+      ? applyCarryForward(classified, client, month, history)
+      : { ...classified, carried: false }
   const prevMonth = previousYearMonth(month)
   await db.collection('clients').doc(client.id).update({
     activityScore: result.score,
@@ -408,8 +440,8 @@ async function analyzeOneClient(db, groq, client, config, month, todayStr, optio
 }
 
 /**
- * Analyze open leads for the current Tashkent month.
- * @param {{ maxClients?: number, clientId?: string, force?: boolean }} options
+ * Analyze open leads for a month (default: current Tashkent month).
+ * @param {{ maxClients?: number, clientId?: string, force?: boolean, month?: string, runStartedAt?: string, timeBudgetMs?: number }} options
  */
 async function runActivityAnalysis(db, apiKey, options = {}) {
   const config = await loadConfig(db)
@@ -418,10 +450,11 @@ async function runActivityAnalysis(db, apiKey, options = {}) {
   }
 
   const groqClient = new Groq({ apiKey: String(apiKey || '') })
-  const month = tashkentMonth()
+  const month = resolveAnalysisMonth(options)
   const todayStr = tashkentToday()
   const maxClients = Number(options.maxClients) || 40
   const deadline = Date.now() + (Number(options.timeBudgetMs) || 50000)
+  const runStartedAt = options.runStartedAt || null
 
   if (options.clientId) {
     const snap = await db.collection('clients').doc(options.clientId).get()
@@ -453,7 +486,11 @@ async function runActivityAnalysis(db, apiKey, options = {}) {
   for (const docSnap of clientsSnap.docs) {
     const client = { id: docSnap.id, ...docSnap.data() }
     if (FINAL_STAGES.has(client.stage)) continue
-    if (!options.force && alreadyAnalyzedToday(client, todayStr, month)) continue
+    if (runStartedAt) {
+      if (alreadyDoneThisRun(client, month, runStartedAt)) continue
+    } else if (!options.force && alreadyAnalyzedToday(client, todayStr, month)) {
+      continue
+    }
     candidates.push(client)
   }
 

@@ -361,6 +361,9 @@ exports.runActivityAnalysisNow = onCall(
       maxClients: 80,
       clientId: request.data?.clientId || null,
       force: Boolean(request.data?.force),
+      month: request.data?.month || null,
+      runStartedAt: request.data?.runStartedAt || null,
+      timeBudgetMs: 500000,
     })
   },
 )

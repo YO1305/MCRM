@@ -8,10 +8,9 @@ import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { POSITION_LABELS } from '@/constants/positions'
 import { subscribeToCollection } from '@/firebase/firestore'
-import { runAiLeadAnalysisNow, runActivityAnalysisNow } from '@/firebase/callable'
+import { runAiLeadAnalysisNow, runActivityAnalysisUntilDone } from '@/firebase/callable'
 import type { Task } from '@/types/task.types'
 import { useAiConfig } from '@/hooks/useAiConfig'
-import { useAiActivityConfig } from '@/hooks/useAiActivityConfig'
 import { canSeeLeadActivity, countLeadActivity } from '@/utils/leadActivity'
 import { countGroqActivity, formatMonthNominative, monthBarWidth } from '@/utils/groqLeadActivity'
 import { getCurrentMonth, todayISO, toISODate } from '@/utils/dates'
@@ -25,12 +24,15 @@ export function Dashboard() {
   const { tasks: aiTasks } = useAiTasks()
   const showActivity = isAdmin || canSeeLeadActivity(user)
   const { config: aiConfig } = useAiConfig()
-  const { config: groqActivityConfig } = useAiActivityConfig()
-  const month = getCurrentMonth()
-  const groqCounts = useMemo(() => countGroqActivity(clients, month), [clients, month])
+  const [analysisMonth, setAnalysisMonth] = useState(getCurrentMonth())
+  const groqCounts = useMemo(
+    () => countGroqActivity(clients, analysisMonth),
+    [clients, analysisMonth],
+  )
   const groqTotal =
     groqCounts.active + groqCounts.passive + groqCounts.paused + groqCounts.unlabeled
   const [activityRunning, setActivityRunning] = useState(false)
+  const [activityProgress, setActivityProgress] = useState('')
   const activityCounts = useMemo(
     () =>
       countLeadActivity(clients, {
@@ -299,42 +301,73 @@ export function Dashboard() {
         <Card className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-lg font-semibold text-text">
-              Активность лидов — {formatMonthNominative(month)} {month.slice(0, 4)}
+              Активность лидов — {formatMonthNominative(analysisMonth)} {analysisMonth.slice(0, 4)}
             </h2>
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              disabled={activityRunning}
-              onClick={() => {
-                void (async () => {
-                  setActivityRunning(true)
-                  try {
-                    const result = await runActivityAnalysisNow({ force: true })
-                    alert(
-                      `Анализ: обработано ${result.processed || 0}` +
-                        (result.remaining
-                          ? `, осталось ${result.remaining} — нажмите ещё раз`
-                          : '') +
-                        (result.errors ? `, ошибок ${result.errors}` : '') +
-                        (result.lastError ? `. ${result.lastError}` : ''),
-                    )
-                  } catch (err) {
-                    console.error(err)
-                    alert(err instanceof Error ? err.message : 'Не удалось запустить анализ')
-                  } finally {
-                    setActivityRunning(false)
-                  }
-                })()
-              }}
-            >
-              {activityRunning ? 'Анализ…' : 'Запустить анализ сейчас'}
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={analysisMonth}
+                onChange={(e) => setAnalysisMonth(e.target.value)}
+                disabled={activityRunning}
+                className="rounded-lg border border-gray-200 bg-surface px-3 py-1.5 text-sm"
+              >
+                {Array.from({ length: 12 }, (_, i) => {
+                  const d = new Date()
+                  d.setDate(1)
+                  d.setMonth(d.getMonth() - i)
+                  const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+                  return (
+                    <option key={key} value={key}>
+                      {formatMonthNominative(key)} {key.slice(0, 4)}
+                    </option>
+                  )
+                })}
+              </select>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                disabled={activityRunning}
+                onClick={() => {
+                  void (async () => {
+                    setActivityRunning(true)
+                    setActivityProgress('Запускаю…')
+                    try {
+                      const result = await runActivityAnalysisUntilDone({
+                        month: analysisMonth,
+                        onProgress: (info) => {
+                          setActivityProgress(
+                            info.remaining > 0
+                              ? `Идёт анализ ${formatMonthNominative(info.month || analysisMonth)}: сделано ${info.processed}, в очереди ${info.remaining}`
+                              : `Дописываю… сделано ${info.processed}`,
+                          )
+                        },
+                      })
+                      setActivityProgress('')
+                      alert(
+                        result.remaining
+                          ? `Остановка: обработано ${result.processed || 0}, не успели ${result.remaining}. Нажмите ещё раз.`
+                          : `Готово за ${formatMonthNominative(result.month || analysisMonth)}: все ${result.processed || 0} карточек прогнаны` +
+                              (result.errors ? `, ошибок ${result.errors}` : ''),
+                      )
+                    } catch (err) {
+                      console.error(err)
+                      setActivityProgress('')
+                      alert(err instanceof Error ? err.message : 'Не удалось запустить анализ')
+                    } finally {
+                      setActivityRunning(false)
+                    }
+                  })()
+                }}
+              >
+                {activityRunning ? 'Анализ…' : 'Переанализировать месяц'}
+              </Button>
+            </div>
           </div>
+          {activityProgress && <p className="text-sm text-secondary">{activityProgress}</p>}
           <p className="text-xs text-muted">
-            Как в карточке: есть работа в «Истории» — активный. С нового месяца статус не
-            обнуляется, пока нет новых записей (порог дней только для шкалы,{' '}
-            {groqActivityConfig?.minActiveDays ?? 10} дн.).
+            Можно выбрать любой месяц (август, сентябрь…). Кнопка сама гоняет все открытые
+            карточки до конца, без «нажмите ещё раз». KPI за этот месяц тоже пересчитается по
+            журналу выбранного месяца.
           </p>
           {(
             [

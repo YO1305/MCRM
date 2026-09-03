@@ -6,9 +6,11 @@ import { Textarea } from '@/components/ui/Textarea'
 import { Badge } from '@/components/ui/Badge'
 import { useAiActivityConfig } from '@/hooks/useAiActivityConfig'
 import { useClients } from '@/hooks/useClients'
-import { runActivityAnalysisNow } from '@/firebase/callable'
+import { runActivityAnalysisNow, runActivityAnalysisUntilDone } from '@/firebase/callable'
 import { DEFAULT_ACTIVITY_PROMPT, GROQ_ACTIVITY_LABELS } from '@/types/aiActivity.types'
 import type { GroqActivityLabel } from '@/types/aiActivity.types'
+import { getCurrentMonth } from '@/utils/dates'
+import { formatMonthNominative } from '@/utils/groqLeadActivity'
 
 export function AiActivitySettings() {
   const { config, loading, saveConfig } = useAiActivityConfig()
@@ -18,6 +20,7 @@ export function AiActivitySettings() {
   const [isActive, setIsActive] = useState(true)
   const [saving, setSaving] = useState(false)
   const [running, setRunning] = useState(false)
+  const [runMonth, setRunMonth] = useState(getCurrentMonth())
   const [msg, setMsg] = useState('')
   const [testClientId, setTestClientId] = useState('')
   const [testLoading, setTestLoading] = useState(false)
@@ -86,14 +89,22 @@ export function AiActivitySettings() {
 
   async function handleRunNow() {
     setRunning(true)
-    setMsg('')
+    setMsg('Запускаю полный прогон…')
     try {
-      const result = await runActivityAnalysisNow({ force: true })
+      const result = await runActivityAnalysisUntilDone({
+        month: runMonth,
+        onProgress: (info) => {
+          setMsg(
+            info.remaining > 0
+              ? `Идёт ${formatMonthNominative(info.month || runMonth)}: сделано ${info.processed}, в очереди ${info.remaining}`
+              : `Дописываю… ${info.processed}`,
+          )
+        },
+      })
       setMsg(
-        `Анализ: обработано ${result.processed || 0}` +
-          (result.remaining ? `, осталось ${result.remaining} — нажмите ещё раз` : '') +
-          (result.errors ? `, ошибок ${result.errors}` : '') +
-          (result.lastError ? `. ${result.lastError}` : ''),
+        result.remaining
+          ? `Остановка: ${result.processed}, не успели ${result.remaining}. Нажмите ещё раз.`
+          : `Готово за ${formatMonthNominative(result.month || runMonth)}: все ${result.processed || 0} карточек`,
       )
     } catch (err) {
       setMsg(err instanceof Error ? err.message : 'Не удалось запустить анализ')
@@ -195,8 +206,26 @@ export function AiActivitySettings() {
         <Button type="button" disabled={saving} onClick={() => void handleSave()}>
           {saving ? '…' : 'Сохранить настройки'}
         </Button>
+        <select
+          value={runMonth}
+          onChange={(e) => setRunMonth(e.target.value)}
+          disabled={running}
+          className="rounded-lg border border-gray-200 bg-surface px-3 py-2 text-sm"
+        >
+          {Array.from({ length: 12 }, (_, i) => {
+            const d = new Date()
+            d.setDate(1)
+            d.setMonth(d.getMonth() - i)
+            const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+            return (
+              <option key={key} value={key}>
+                {formatMonthNominative(key)} {key.slice(0, 4)}
+              </option>
+            )
+          })}
+        </select>
         <Button type="button" variant="secondary" disabled={running} onClick={() => void handleRunNow()}>
-          {running ? 'Анализ…' : 'Запустить анализ сейчас'}
+          {running ? 'Анализ…' : 'Прогнать все карточки за месяц'}
         </Button>
       </div>
     </Card>

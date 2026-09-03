@@ -66,6 +66,8 @@ export function useKpiPayroll(role: KpiPayrollRole, month: string, enabled: bool
       dealCounts: { ...base.dealCounts, ...saved.dealCounts },
       repeatBonus: saved.repeatBonus ?? 0,
       instagramTier: saved.instagramTier ?? null,
+      onlineSalesUzs: saved.onlineSalesUzs ?? 0,
+      instagramDirectFix: saved.instagramDirectFix ?? false,
       dutyDone: { ...base.dutyDone, ...saved.dutyDone },
       leadOverride: saved.leadOverride ?? null,
     }

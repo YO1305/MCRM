@@ -53,6 +53,35 @@ export const INSTAGRAM_TIERS: { id: InstagramTierId; label: string; bonus: numbe
   { id: 't250', label: '250 млн+ сум/мес', bonus: 2500 },
 ]
 
+export const INSTAGRAM_DIRECT_FIX = 500
+
+/** Доля от чистых онлайн-продаж через Direct. Сумма ввода — сумы за месяц. */
+export const ONLINE_SALES_TIERS: { maxMln: number; rate: number; label: string }[] = [
+  { maxMln: 15, rate: 0.04, label: '0–15 млн · 4%' },
+  { maxMln: 40, rate: 0.05, label: '15–40 млн · 5%' },
+  { maxMln: 80, rate: 0.06, label: '40–80 млн · 6%' },
+  { maxMln: Infinity, rate: 0.07, label: '80 млн+ · 7%' },
+]
+
+export function onlineSalesShare(uzs: number): {
+  mln: number
+  rate: number
+  bonusThousands: number
+  label: string | null
+} {
+  const amount = Number.isFinite(uzs) && uzs > 0 ? uzs : 0
+  const mln = amount / 1_000_000
+  if (amount <= 0) return { mln: 0, rate: 0, bonusThousands: 0, label: null }
+  const tier =
+    ONLINE_SALES_TIERS.find((t) => mln <= t.maxMln) || ONLINE_SALES_TIERS[ONLINE_SALES_TIERS.length - 1]
+  return {
+    mln,
+    rate: tier.rate,
+    bonusThousands: Math.round(((amount * tier.rate) / 1000) * 100) / 100,
+    label: tier.label,
+  }
+}
+
 export interface DutyItem {
   id: string
   title: string
@@ -180,6 +209,8 @@ export function defaultPayrollInputs(role: KpiPayrollRole): KpiPayrollInputs {
     dealCounts: emptyDealCounts(),
     repeatBonus: 0,
     instagramTier: null,
+    onlineSalesUzs: 0,
+    instagramDirectFix: false,
     dutyDone,
     leadOverride: null,
   }
@@ -403,9 +434,18 @@ export function calculatePayroll(
     ? INSTAGRAM_TIERS.find((t) => t.id === inputs.instagramTier)
     : undefined
   const instagramBonus = instagram?.bonus ?? 0
+  const online = tpl.hasInstagram
+    ? onlineSalesShare(inputs.onlineSalesUzs)
+    : { mln: 0, rate: 0, bonusThousands: 0, label: null as string | null }
+  const instagramDirectFixBonus =
+    tpl.hasInstagram && inputs.instagramDirectFix ? INSTAGRAM_DIRECT_FIX : 0
   const repeatBonus = Math.max(0, Number(inputs.repeatBonus) || 0)
   const block3Total = roundMoney(
-    dealRows.reduce((s, r) => s + r.amount, 0) + repeatBonus + instagramBonus,
+    dealRows.reduce((s, r) => s + r.amount, 0) +
+      repeatBonus +
+      instagramBonus +
+      online.bonusThousands +
+      instagramDirectFixBonus,
   )
 
   return {
@@ -419,6 +459,11 @@ export function calculatePayroll(
     repeatBonus,
     instagramBonus,
     instagramLabel: instagram?.label ?? null,
+    onlineSalesUzs: inputs.onlineSalesUzs || 0,
+    onlineSalesRate: online.rate,
+    onlineSalesBonus: online.bonusThousands,
+    onlineSalesLabel: online.label,
+    instagramDirectFixBonus,
     block3Total,
     handsTotal: roundMoney(fixa + block2Total + block3Total),
   }
@@ -438,7 +483,7 @@ export const KPI_EXPLAIN_GENERAL = {
     },
     {
       title: 'Блок 3 — бонусы',
-      text: 'Вне фонда KPI. За каждую сделку с новым клиентом — фиксированная сумма по диапазону в долларах. Повторный заказ: 0,8 % от инвойса, сумму вписываете вручную. Итог блока 3 суммирует все строки (в Excel была ошибка: первая строка ткани 1k–10k выпадала из суммы — здесь она входит).',
+      text: 'Вне фонда KPI. Сделки с новым клиентом — по диапазону $. Повторный заказ: 0,8 % от инвойса. У Айгуль ещё: оборот магазина (Instagram / филиал, одна ступень), доля от чистых онлайн-продаж через Direct (4–7 %) и фикса Direct 500 тыс.',
     },
   ],
 }

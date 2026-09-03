@@ -51,8 +51,9 @@ export function KpiExplanation({ role }: { role: KpiPayrollRole }) {
 
       {role === 'aygul' ? (
         <p className="text-xs leading-relaxed text-muted">
-          У Айгуль четвёртый показатель — контроль SMM (6 городов), плюс бонус за оборот Instagram
-          (только одна ступень в месяц). Шоурум в её KPI-фонд не входит.
+          У Айгуль четвёртый показатель — контроль SMM, плюс бонусы: оборот магазина (филиал /
+          Instagram, одна ступень), доля от чистых онлайн-продаж через Direct (4–7 %) и фикса Direct
+          500 тыс. Шоурум в её KPI-фонд не входит.
         </p>
       ) : (
         <p className="text-xs leading-relaxed text-muted">

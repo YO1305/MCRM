@@ -21,6 +21,10 @@ export interface KpiPayrollInputs {
   /** Бонус 0,8% от инвойса повторного заказа, уже в тыс сум */
   repeatBonus: number
   instagramTier: InstagramTierId | null
+  /** Чистые онлайн-продажи через Direct, в сумах за месяц (не тыс). Только Айгуль. */
+  onlineSalesUzs: number
+  /** Фикса Instagram Direct 500 тыс, как в Excel. Только Айгуль. */
+  instagramDirectFix: boolean
   dutyDone: Record<string, boolean>
   leadOverride: { fabric: number; finished: number; europe: number } | null
 }
@@ -71,6 +75,11 @@ export interface KpiPayrollResult {
   repeatBonus: number
   instagramBonus: number
   instagramLabel: string | null
+  onlineSalesUzs: number
+  onlineSalesRate: number
+  onlineSalesBonus: number
+  onlineSalesLabel: string | null
+  instagramDirectFixBonus: number
   block3Total: number
   handsTotal: number
 }

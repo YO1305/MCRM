@@ -17,6 +17,7 @@ import { LEAD_CATEGORIES } from '@/constants/clientMeta'
 import {
   KPI_ROLE_TEMPLATES,
   INSTAGRAM_TIERS,
+  INSTAGRAM_DIRECT_FIX,
   applySuggestedDealCounts,
   calculatePayroll,
   findPayrollManager,
@@ -568,28 +569,66 @@ function KpiPayrollPage({
                 </td>
               </tr>
               {tpl.hasInstagram && (
-                <tr className="border-b border-gray-50">
-                  <td className="py-2 pr-2">Оборот Instagram (одна ступень)</td>
-                  <td className="py-2 pr-2" colSpan={2}>
-                    <select
-                      value={draft.instagramTier || ''}
-                      onChange={(e) =>
-                        patch({
-                          instagramTier: (e.target.value || null) as KpiPayrollInputs['instagramTier'],
-                        })
-                      }
-                      className="max-w-full rounded-md border border-gray-200 px-2 py-1 text-sm"
-                    >
-                      <option value="">нет бонуса</option>
-                      {INSTAGRAM_TIERS.map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.label} → {formatKpiMoney(t.bonus)}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="py-2 font-semibold">{formatKpiMoney(calc.instagramBonus)}</td>
-                </tr>
+                <>
+                  <tr className="border-b border-gray-50">
+                    <td className="py-2 pr-2">Оборот магазина (Instagram / филиал) — одна ступень</td>
+                    <td className="py-2 pr-2" colSpan={2}>
+                      <select
+                        value={draft.instagramTier || ''}
+                        onChange={(e) =>
+                          patch({
+                            instagramTier: (e.target.value || null) as KpiPayrollInputs['instagramTier'],
+                          })
+                        }
+                        className="max-w-full rounded-md border border-gray-200 px-2 py-1 text-sm"
+                      >
+                        <option value="">нет бонуса</option>
+                        {INSTAGRAM_TIERS.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.label} → {formatKpiMoney(t.bonus)}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="py-2 font-semibold">{formatKpiMoney(calc.instagramBonus)}</td>
+                  </tr>
+                  <tr className="border-b border-gray-50">
+                    <td className="py-2 pr-2">
+                      Чистые онлайн-продажи через Direct
+                      <span className="mt-0.5 block text-xs font-normal text-muted">
+                        0–15 млн → 4% · 15–40 → 5% · 40–80 → 6% · 80+ → 7%. Вводите сумму в сумах.
+                        {calc.onlineSalesLabel ? ` Сейчас: ${calc.onlineSalesLabel}` : ''}
+                      </span>
+                    </td>
+                    <td className="py-2 pr-2" colSpan={2}>
+                      <input
+                        type="number"
+                        min={0}
+                        className="w-40 rounded-md border border-gray-200 px-2 py-1 text-sm"
+                        value={draft.onlineSalesUzs || ''}
+                        placeholder="4754000"
+                        onChange={(e) => patch({ onlineSalesUzs: Number(e.target.value) || 0 })}
+                      />
+                    </td>
+                    <td className="py-2 font-semibold">{formatKpiMoney(calc.onlineSalesBonus)}</td>
+                  </tr>
+                  <tr className="border-b border-gray-50">
+                    <td className="py-2 pr-2">Фикса Instagram Direct</td>
+                    <td className="py-2 pr-2" colSpan={2}>
+                      <label className="inline-flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={draft.instagramDirectFix}
+                          onChange={(e) => patch({ instagramDirectFix: e.target.checked })}
+                        />
+                        {formatKpiMoney(INSTAGRAM_DIRECT_FIX)}
+                      </label>
+                    </td>
+                    <td className="py-2 font-semibold">
+                      {formatKpiMoney(calc.instagramDirectFixBonus)}
+                    </td>
+                  </tr>
+                </>
               )}
               <tr>
                 <td className="py-2.5 font-semibold" colSpan={3}>

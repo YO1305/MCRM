@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { subscribeToDocument, setDocument } from '@/firebase/firestore'
+import { deleteField } from 'firebase/firestore'
 import { defaultPayrollInputs, payrollDocId } from '@/constants/kpiPayroll'
 import type { KpiPayrollDoc, KpiPayrollInputs, KpiPayrollRole } from '@/types/kpiPayroll.types'
 
@@ -40,6 +41,7 @@ export function useKpiPayroll(role: KpiPayrollRole, month: string, enabled: bool
         const id = payrollDocId(role, month)
         await setDocument('kpi_payroll', id, {
           ...inputs,
+          leadOverride: inputs.leadOverride ?? deleteField(),
           roleKey: role,
           month,
           savedBy: user.id,

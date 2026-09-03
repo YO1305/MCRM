@@ -24,7 +24,7 @@ function normalizeConfig(raw: Partial<AiActivityConfig> | undefined): AiActivity
         ? DEFAULT_ACTIVITY_PROMPT
         : raw.activityPrompt,
     isActive: raw?.isActive !== false,
-    minKpiMoments: Math.max(4, Number(raw?.minKpiMoments ?? DEFAULT_AI_ACTIVITY_CONFIG.minKpiMoments) || 4),
+    minKpiMoments: Math.max(3, Number(raw?.minKpiMoments ?? DEFAULT_AI_ACTIVITY_CONFIG.minKpiMoments) || 3),
     kpiPrompt:
       !raw?.kpiPrompt || isLegacyKpiPrompt(raw.kpiPrompt)
         ? DEFAULT_KPI_PROMPT

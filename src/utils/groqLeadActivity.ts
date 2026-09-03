@@ -140,8 +140,8 @@ export function effectiveGroqActivity(
   const prevLabel =
     client.activityMonth === prev ? (client.activityLabel as GroqActivityLabel | null) : null
 
-  if (isPauseWait(client.waitStatus) && days === 0 && thisLabel !== 'active') {
-    return { label: 'paused', carried: thisLabel !== 'paused', sourceMonth: month }
+  if (isPauseWait(client.waitStatus)) {
+    return { label: 'paused', carried: false, sourceMonth: month }
   }
 
   if (thisLabel === 'active' && (days > 0 || client.activityCarriedFrom)) {

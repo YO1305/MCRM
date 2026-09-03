@@ -1,7 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
+import { KpiOverrideButtons } from '@/components/kpi/KpiOverrideButtons'
+import { useAuth } from '@/hooks/useAuth'
 import { useClientHistory } from '@/hooks/useClientHistory'
 import { useAiActivityConfig } from '@/hooks/useAiActivityConfig'
 import { useKpiLeads } from '@/hooks/useKpiLeads'
@@ -54,11 +56,16 @@ export function KpiLeadAudit({
   clients: Client[]
   initialMonth?: string
 }) {
+  const { isAdmin } = useAuth()
   const { config } = useAiActivityConfig()
-  const minKpiMoments = config?.minKpiMoments ?? 4
+  const minKpiMoments = config?.minKpiMoments ?? 3
   const [month, setMonth] = useState(initialMonth || previousMonthKey() || getCurrentMonth())
   const { leads } = useKpiLeads('all', month)
   const [q, setQ] = useState('')
+
+  useEffect(() => {
+    if (initialMonth) setMonth(initialMonth)
+  }, [initialMonth])
   const [managerId, setManagerId] = useState('all')
   const [bucket, setBucket] = useState<'all' | 'yes' | 'no'>('all')
   const [selectedId, setSelectedId] = useState('')
@@ -123,8 +130,9 @@ export function KpiLeadAudit({
         <div>
           <h2 className="text-lg font-semibold text-text">Разбор KPI-лидов по клиенту</h2>
           <p className="mt-1 text-sm text-muted">
-            Найдите клиента (например Шахноза). Считаются шаги менеджера по этому клиенту:
-            4 шага, 3 разных дня, звонок или визит, и КП либо образцы. Так план спокойно 70–80%, а не 160%.{' '}
+            Найдите клиента. Смотрим всю историю: на паузе — не трогаем; КП и две недели тишины —
+            заброшен, не KPI. Когда снимут паузу, отсчёт с этого дня. Админ может «Засчитать» /
+            «Убрать из KPI».{' '}
             <a
               className="text-secondary underline"
               href="/Kak_otbor_aktivnost_i_lidy.doc"
@@ -222,21 +230,33 @@ export function KpiLeadAudit({
             const yes = logByClient.has(c.id)
             return (
               <li key={c.id}>
-                <button
-                  type="button"
-                  onClick={() => setSelectedId(c.id)}
-                  className={`flex w-full items-start justify-between gap-2 px-3 py-2 text-left text-sm ${
+                <div
+                  className={`flex w-full items-start justify-between gap-2 px-3 py-2 text-sm ${
                     selectedId === c.id ? 'bg-secondary/10' : 'hover:bg-background'
                   }`}
                 >
-                  <span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedId(c.id)}
+                    className="min-w-0 flex-1 text-left"
+                  >
                     <span className="font-medium text-text">{c.name}</span>
                     <span className="mt-0.5 block text-xs text-muted">
                       {c.assignedToName || 'без менеджера'} · {stageLabel(c.stage)}
                     </span>
+                  </button>
+                  <span className="flex shrink-0 flex-col items-end gap-1 sm:flex-row sm:items-center">
+                    <Badge variant={yes ? 'success' : 'default'}>{yes ? 'в KPI' : 'нет'}</Badge>
+                    {isAdmin && (
+                      <KpiOverrideButtons
+                        client={c}
+                        month={month}
+                        log={logByClient.get(c.id) || null}
+                        counted={yes}
+                      />
+                    )}
                   </span>
-                  <Badge variant={yes ? 'success' : 'default'}>{yes ? 'в KPI' : 'нет'}</Badge>
-                </button>
+                </div>
               </li>
             )
           })}
@@ -257,6 +277,14 @@ export function KpiLeadAudit({
               <Badge variant={explanation.counted ? 'success' : 'danger'}>
                 {explanation.counted ? 'Засчитан' : 'Не засчитан'}
               </Badge>
+              {isAdmin && (
+                <KpiOverrideButtons
+                  client={selected}
+                  month={month}
+                  log={logByClient.get(selected.id) || null}
+                  counted={explanation.counted}
+                />
+              )}
               <Link to={`/crm?client=${selected.id}`} className="text-sm text-secondary underline">
                 Открыть карточку
               </Link>

@@ -17,6 +17,14 @@ export function getCurrentMonth(d: Date = new Date()): string {
   return `${y}-${m}`
 }
 
+/** Early in a new month payroll still looks at the previous month. */
+export function getPayrollMonth(d: Date = new Date()): string {
+  if (d.getDate() <= 12) {
+    return getCurrentMonth(new Date(d.getFullYear(), d.getMonth() - 1, 1))
+  }
+  return getCurrentMonth(d)
+}
+
 export function addDaysISO(iso: string, days: number): string {
   const d = parseISODate(iso)
   d.setDate(d.getDate() + days)

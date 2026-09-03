@@ -14,6 +14,7 @@ import { KpiHeadPanel } from '@/components/kpi/KpiHeadPanel'
 import { KpiDesignerPanel } from '@/components/kpi/KpiDesignerPanel'
 import { KpiAssistantPanel } from '@/components/kpi/KpiAssistantPanel'
 import { KpiLeadAudit } from '@/components/kpi/KpiLeadAudit'
+import { KpiOverrideButtons } from '@/components/kpi/KpiOverrideButtons'
 import { LEAD_CATEGORIES } from '@/constants/clientMeta'
 import {
   KPI_ROLE_TEMPLATES,
@@ -27,7 +28,7 @@ import {
   suggestDealsForMonth,
 } from '@/constants/kpiPayroll'
 import { groqActivityIsCurrent, kpiMonthIsCurrent } from '@/utils/groqLeadActivity'
-import { getCurrentMonth } from '@/utils/dates'
+import { getPayrollMonth } from '@/utils/dates'
 import type { DealBandId, KpiPayrollInputs, KpiPayrollRole } from '@/types/kpiPayroll.types'
 import type { LeadCategory } from '@/types/kpiLead.types'
 
@@ -57,10 +58,10 @@ function leadCats(lead: { categories?: LeadCategory[]; category?: LeadCategory }
 type DeptTab = 'leads' | 'audit' | 'head' | 'designer' | 'assistant'
 
 export function KPI() {
-  const { user } = useAuth()
+  const { user, isAdmin } = useAuth()
   const { users } = useUsers(true)
   const { clients } = useClients()
-  const [month, setMonth] = useState(getCurrentMonth())
+  const [month, setMonth] = useState(getPayrollMonth())
   const [role, setRole] = useState<KpiPayrollRole>('aygul')
   const [deptTab, setDeptTab] = useState<DeptTab>('leads')
   const [unlocked, setUnlocked] = useState(isKpiUnlocked)
@@ -111,7 +112,7 @@ export function KPI() {
         ))}
       </div>
 
-      {deptTab === 'audit' && <KpiLeadAudit clients={clients} />}
+      {deptTab === 'audit' && <KpiLeadAudit clients={clients} initialMonth={month} />}
       {deptTab === 'head' && <KpiHeadPanel month={month} />}
       {deptTab === 'designer' && <KpiDesignerPanel month={month} />}
       {deptTab === 'assistant' && <KpiAssistantPanel month={month} />}
@@ -125,6 +126,7 @@ export function KPI() {
           clients={clients}
           adminId={user?.id || ''}
           adminName={user?.name || ''}
+          isAdmin={isAdmin}
         />
       )}
     </div>
@@ -140,6 +142,7 @@ function KpiPayrollPage({
   clients,
   adminId,
   adminName,
+  isAdmin,
 }: {
   month: string
   setMonth: (v: string) => void
@@ -149,26 +152,32 @@ function KpiPayrollPage({
   clients: ReturnType<typeof useClients>['clients']
   adminId: string
   adminName: string
+  isAdmin: boolean
 }) {
   const tpl = KPI_ROLE_TEMPLATES[role]
   const manager = useMemo(() => findPayrollManager(users, role), [users, role])
   const managerId = manager?.id || ''
   const { counts, leads, loading: leadsLoading } = useKpiLeads(managerId, month)
-  const { inputs: savedInputs, loading, saving, error, save } = useKpiPayroll(
+  const { inputs: savedInputs, saved, loading, saving, error, save } = useKpiPayroll(
     role,
     month,
     true,
   )
   const [draft, setDraft] = useState<KpiPayrollInputs>(savedInputs)
   const [savedOk, setSavedOk] = useState('')
-  const [tab, setTab] = useState<'pay' | 'guide'>('guide')
+  const [tab, setTab] = useState<'pay' | 'guide'>('pay')
   const { leads: allLeads } = useKpiLeads('all', month)
+
+  const savedStamp =
+    saved && typeof saved === 'object'
+      ? String((saved as { updatedAt?: { seconds?: number } }).updatedAt?.seconds ?? saved.id)
+      : 'none'
 
   useEffect(() => {
     if (loading) return
     setDraft(savedInputs)
     setSavedOk('')
-  }, [role, month, loading, savedInputs])
+  }, [role, month, loading, savedStamp])
 
   const leadFacts = {
     fabric: counts.fabric,
@@ -184,13 +193,31 @@ function KpiPayrollPage({
 
   const countedIds = useMemo(() => new Set(leads.map((l) => l.clientId)), [leads])
 
+  const FINAL_STAGES = new Set(['deal', 'rejected', 'failed', 'abandoned'])
+
   const notCounted = useMemo(() => {
     if (!managerId) return []
     return clients
       .filter((c) => c.assignedTo === managerId)
+      // must be active this month (strict check)
       .filter((c) => groqActivityIsCurrent(c, month) && c.activityLabel === 'active')
+      // not already in the KPI log
       .filter((c) => !countedIds.has(c.id))
+      // not already qualified this month
       .filter((c) => !(c.kpiQualified === true && kpiMonthIsCurrent(c, month)))
+      // exclude final stages (rejected/failed/abandoned/deal)
+      .filter((c) => !FINAL_STAGES.has(c.stage))
+      // exclude paused (wait_status contains "на паузе")
+      .filter((c) => !String(c.waitStatus || '').toLowerCase().includes('на паузе'))
+      // exclude leads on 4th month or later
+      .filter((c) => {
+        const raw = String(c.openedDate || c.openedMonth || '').slice(0, 7)
+        if (!/^\d{4}-\d{2}$/.test(raw)) return true
+        const [oy, om] = raw.split('-').map(Number)
+        const [ty, tm] = month.split('-').map(Number)
+        const activeMonths = (ty - oy) * 12 + (tm - om) + 1
+        return activeMonths <= 3
+      })
       .sort((a, b) => a.name.localeCompare(b.name, 'ru'))
   }, [clients, managerId, month, countedIds])
 
@@ -216,8 +243,9 @@ function KpiPayrollPage({
       <div>
         <h1 className="text-2xl font-bold text-text">KPI · зарплата менеджеров по лидам</h1>
         <p className="mt-1 text-sm text-muted">
-          Как в файлах 02 (Айгуль) и 03 (Кундуз). Факт лидов подтягивается из CRM. Сделки и SMM /
-          шоурум проверяете и сохраняете.
+          Цифры ткань / ГП / Европа берутся из списка лидов ниже за выбранный месяц. Переанализ
+          августа виден только если сверху выбран август. Если включена ручная цифра — журнал её не
+          меняет.
         </p>
       </div>
 
@@ -305,24 +333,43 @@ function KpiPayrollPage({
           <div>
             <h2 className="text-base font-semibold text-text">Блок 2 — KPI</h2>
             <p className="text-xs text-muted">
-              Фонд {formatKpiMoney(calc.kpiFund)}. Сумма = фонд × вес × коэффициент.
+              Фонд {formatKpiMoney(calc.kpiFund)}. Сумма = фонд × вес × коэффициент. Журнал сейчас:
+              ткань {leadFacts.fabric}, ГП {leadFacts.finished}, Европа {leadFacts.europe}.
             </p>
           </div>
-          <label className="flex items-center gap-2 text-xs text-muted">
-            <input
-              type="checkbox"
-              checked={Boolean(draft.leadOverride)}
-              onChange={(e) =>
-                patch({
-                  leadOverride: e.target.checked
-                    ? { fabric: leadFacts.fabric, finished: leadFacts.finished, europe: leadFacts.europe }
-                    : null,
-                })
-              }
-            />
-            Править факт лидов вручную
-          </label>
+          <div className="flex flex-col items-end gap-1">
+            <label className="flex items-center gap-2 text-xs text-muted">
+              <input
+                type="checkbox"
+                checked={Boolean(draft.leadOverride)}
+                onChange={(e) =>
+                  patch({
+                    leadOverride: e.target.checked
+                      ? { fabric: leadFacts.fabric, finished: leadFacts.finished, europe: leadFacts.europe }
+                      : null,
+                  })
+                }
+              />
+              Заморозить цифру (не из журнала)
+            </label>
+            {draft.leadOverride && (
+              <button
+                type="button"
+                className="text-xs text-secondary underline"
+                onClick={() => patch({ leadOverride: null })}
+              >
+                Взять факт из журнала
+              </button>
+            )}
+          </div>
         </div>
+        {draft.leadOverride && (
+          <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            Цифра заморожена вручную (ткань {draft.leadOverride.fabric}, ГП {draft.leadOverride.finished},
+            Европа {draft.leadOverride.europe}). Переанализ и кнопки «Засчитать» журнал меняют, а эту
+            таблицу — нет, пока не нажмёте «Взять факт из журнала» и не сохраните расчёт.
+          </p>
+        )}
         <div className="overflow-x-auto">
           <table className="w-full min-w-[640px] text-left text-sm">
             <thead>
@@ -403,8 +450,8 @@ function KpiPayrollPage({
       <Card className="space-y-3">
         <h2 className="text-base font-semibold text-text">Засчитанные KPI-лиды</h2>
         <p className="text-xs text-muted">
-          Почему засчитан: обоснование Groq + категории (ткань / ГП / Европа). Клиент открывается в
-          CRM.
+          Почему засчитан: шаги в Истории + категории (ткань / ГП / Европа). Админ может убрать лид
+          из факта кнопкой «Убрать из KPI».
         </p>
         {leadsLoading ? (
           <p className="text-sm text-muted">Загрузка журнала…</p>
@@ -447,6 +494,15 @@ function KpiPayrollPage({
                     <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
                       засчитан
                     </span>
+                    {isAdmin && client && (
+                      <KpiOverrideButtons
+                        client={client}
+                        month={month}
+                        log={lead}
+                        counted
+                        onDone={() => patch({ leadOverride: null })}
+                      />
+                    )}
                   </div>
                   <p className="mt-1 text-sm leading-relaxed text-text">{reason}</p>
                 </li>
@@ -460,6 +516,7 @@ function KpiPayrollPage({
         <h2 className="text-base font-semibold text-text">Активные, но не засчитанные</h2>
         <p className="text-xs text-muted">
           Клиенты этого менеджера, у кого за месяц есть активность в CRM, но KPI-лид не прошёл.
+          Админ может взять клиента из списка и нажать «Засчитать».
         </p>
         {notCounted.length === 0 ? (
           <p className="text-sm text-muted">Таких клиентов нет.</p>
@@ -477,6 +534,14 @@ function KpiPayrollPage({
                   <span className="rounded-md bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800">
                     не в факте
                   </span>
+                  {isAdmin && (
+                    <KpiOverrideButtons
+                      client={c}
+                      month={month}
+                      counted={false}
+                      onDone={() => patch({ leadOverride: null })}
+                    />
+                  )}
                 </div>
                 <p className="mt-1 text-sm leading-relaxed text-muted">
                   {c.kpiQualificationReason ||

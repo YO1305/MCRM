@@ -42,15 +42,15 @@ export const DEFAULT_ACTIVITY_PROMPT = `Ты смотришь журнал CRM B
 JSON:
 {"label":"active|passive|paused","score":0-100,"reason":"одно предложение что сделали"}`
 
-export const DEFAULT_KPI_PROMPT = `Отбор KPI считает программа, не ИИ.
+export const DEFAULT_KPI_PROMPT = `Отбор KPI считает программа, не ИИ. Смотрит всю Историю за месяц.
 
-Правило (план спокойно 70–80%):
-1) Активный = любая работа в Истории за месяц.
-2) KPI-лид = активный, не старше 3 месяцев, и все четыре пункта:
-   — 4 содержательных шага;
-   — работа в 3 разных дня;
-   — звонок или визит;
-   — КП или образцы или сдвиг этапа.
+1) Активный = работа в Истории. На паузе = не трогаем.
+2) KPI-лид = активный, 1–3 месяц, и:
+   — 3 содержательных шага;
+   — 2 разных дня;
+   — 2 разных вида работы;
+   — не заброшен (нет 10+ дней тишины);
+   — не на паузе. Сняли паузу — отсчёт с этого дня.
 3) Сделка в 1-м месяце = сразу.
 4) «Написала» без сути не шаг.`
 
@@ -58,7 +58,7 @@ export const DEFAULT_AI_ACTIVITY_CONFIG: AiActivityConfig = {
   minActiveDays: 10,
   activityPrompt: DEFAULT_ACTIVITY_PROMPT,
   isActive: true,
-  minKpiMoments: 4,
+  minKpiMoments: 3,
   kpiPrompt: DEFAULT_KPI_PROMPT,
   updatedBy: null,
 }
@@ -78,5 +78,7 @@ export function isLegacyActivityPrompt(text: unknown): boolean {
 export function isLegacyKpiPrompt(text: unknown): boolean {
   const s = String(text || '')
   if (!s.trim()) return true
-  return !/4 содержательных шага|3 разных дня/i.test(s)
+  if (/4 содержательных шага|3 разных дня|все четыре пункта/i.test(s)) return true
+  if (!/на паузе/i.test(s) || !/заброш|тишин/i.test(s)) return true
+  return !/3 содержательных шага/i.test(s)
 }

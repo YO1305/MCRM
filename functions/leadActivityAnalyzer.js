@@ -3,7 +3,7 @@ const Groq = require('groq-sdk')
 const { qualifyLeadForKpi, testKpiQualification, DEFAULT_KPI_PROMPT, DEFAULT_MIN_MOMENTS, resolveActiveMonths } = require('./kpiQualifier')
 
 const FINAL_STAGES = new Set(['deal', 'rejected', 'failed', 'abandoned'])
-const REQUEST_DELAY_MS = 300
+const REQUEST_DELAY_MS = 0
 const DEFAULT_MIN_DAYS = 10
 const GROQ_MODEL = 'llama-3.1-8b-instant'
 
@@ -150,14 +150,14 @@ function hasCrmWork(entries) {
 }
 
 function classifyLabel(entries, waitStatus) {
+  if (isPauseText(waitStatus)) return 'paused'
   const work = hasCrmWork(entries)
-  if (isPauseText(waitStatus) && !work) return 'paused'
   if (work) return 'active'
   return 'passive'
 }
 
 function autoReason(entries, label) {
-  if (label === 'paused') return 'В карточке «на паузе», другой работы за месяц нет.'
+  if (label === 'paused') return 'На паузе — не трогаем, пока снова не начнут работу.'
   if (label === 'passive') return 'За этот месяц в истории нет работы по лиду.'
   const line = (entries || []).find((e) => !SKIP_TYPES.has(e.type) && e.text)
   if (line?.text) return String(line.text).replace(/\s+/g, ' ').slice(0, 220)
@@ -181,6 +181,14 @@ function hadRecentWork(client, month) {
 }
 
 function applyCarryForward(result, client, month, entries) {
+  if (isPauseText(client.waitStatus)) {
+    return {
+      label: 'paused',
+      score: 0,
+      reason: 'На паузе — не трогаем, пока снова не начнут работу.',
+      carried: false,
+    }
+  }
   if (result.label !== 'passive') return { ...result, carried: false }
   if (hasCrmWork(entries)) return { ...result, carried: false }
   if (!hadRecentWork(client, month)) return { ...result, carried: false }
@@ -274,10 +282,13 @@ async function loadConfig(db) {
     minActiveDays: Math.max(1, Number(data.minActiveDays) || DEFAULT_MIN_DAYS),
     activityPrompt: !storedPrompt.trim() || legacyPrompt ? DEFAULT_ACTIVITY_PROMPT : storedPrompt,
     isActive: data.isActive !== false,
-    minKpiMoments: Math.max(4, Number(data.minKpiMoments) || DEFAULT_MIN_MOMENTS),
+    minKpiMoments: Math.max(3, Number(data.minKpiMoments) || DEFAULT_MIN_MOMENTS),
     kpiPrompt:
       !String(data.kpiPrompt || '').trim() ||
-      !/4 содержательных шага|3 разных дня/i.test(String(data.kpiPrompt || ''))
+      /4 содержательных шага|3 разных дня|все четыре пункта/i.test(String(data.kpiPrompt || '')) ||
+      !/3 содержательных шага/i.test(String(data.kpiPrompt || '')) ||
+      !/на паузе/i.test(String(data.kpiPrompt || '')) ||
+      !/заброш|тишин/i.test(String(data.kpiPrompt || ''))
         ? DEFAULT_KPI_PROMPT
         : data.kpiPrompt,
   }
@@ -290,11 +301,11 @@ async function loadMonthHistory(db, clientId, month) {
       .collection('client_history')
       .where('clientId', '==', clientId)
       .orderBy('createdAt', 'desc')
-      .limit(250)
+      .limit(80)
       .get()
   } catch (err) {
     console.error('history ordered query failed, fallback', clientId, err)
-    snap = await db.collection('client_history').where('clientId', '==', clientId).limit(250).get()
+    snap = await db.collection('client_history').where('clientId', '==', clientId).limit(80).get()
   }
 
   return snap.docs
@@ -394,7 +405,40 @@ async function analyzeOneClient(db, groq, client, config, month, todayStr, optio
     waitStatus: client.waitStatus || null,
     daysSinceLastTouch: daysDiff(resolveTouchDate(client, todayStr), todayStr),
   }
-  const groqResult = await analyzeWithGroq(groq, input, config)
+  if (isPauseText(client.waitStatus)) {
+    const paused = {
+      label: 'paused',
+      score: 0,
+      reason: 'На паузе — не трогаем, пока снова не начнут работу.',
+      carried: false,
+    }
+    await db.collection('clients').doc(client.id).update({
+      activityScore: 0,
+      activityLabel: 'paused',
+      activityMonth: month,
+      activityAnalyzedAt: FieldValue.serverTimestamp(),
+      activityReason: paused.reason,
+      activeDaysThisMonth: 0,
+      activityCarriedFrom: null,
+      updatedAt: FieldValue.serverTimestamp(),
+    })
+    let kpi = null
+    try {
+      kpi = await qualifyLeadForKpi(
+        db,
+        groq,
+        { ...client, activityLabel: 'paused', activityMonth: month, activeDaysThisMonth: 0 },
+        history,
+        config,
+        month,
+        options,
+      )
+    } catch (err) {
+      console.error(`KPI step failed for ${client.id}:`, err)
+    }
+    return { ...paused, activeDaysCount: 0, input, kpi }
+  }
+  const groqResult = { label: 'passive', score: 0, reason: '' }
   const classified = applyDayThreshold(
     groqResult,
     activeDaysCount,
@@ -453,7 +497,7 @@ async function runActivityAnalysis(db, apiKey, options = {}) {
     return { ok: true, skippedAll: true, reason: 'Activity analysis disabled', processed: 0, remaining: 0 }
   }
 
-  const groqClient = new Groq({ apiKey: String(apiKey || '') })
+  const groqClient = apiKey ? new Groq({ apiKey: String(apiKey) }) : null
   const month = resolveAnalysisMonth(options)
   const todayStr = tashkentToday()
   const maxClients = Number(options.maxClients) || 40
@@ -511,6 +555,10 @@ async function runActivityAnalysis(db, apiKey, options = {}) {
     } catch (error) {
       console.error(`Activity analysis error for ${client.id}:`, error)
       lastError = error?.message || String(error)
+      if (/RESOURCE_EXHAUSTED|Quota exceeded/i.test(lastError)) {
+        errors += 1
+        break
+      }
       try {
         const failHistory = await loadMonthHistory(db, client.id, month).catch(() => [])
         const failDays = calculateActiveDays(failHistory)

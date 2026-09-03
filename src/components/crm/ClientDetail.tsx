@@ -165,7 +165,7 @@ export function ClientDetail({
   const groqUi = effectiveGroqActivity(client || {}, month)
   const kpiCurrent = kpiMonthIsCurrent(client || {}, month)
   const minDays = activityConfig?.minActiveDays ?? 10
-  const minMoments = activityConfig?.minKpiMoments ?? 4
+  const minMoments = activityConfig?.minKpiMoments ?? 3
 
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
@@ -869,7 +869,8 @@ export function ClientDetail({
             <p className="text-sm font-semibold text-text">Что ждём</p>
             <p className="text-xs text-muted">
               Пока ждём ответа клиента — ИИ не будет советовать писать сразу. Укажите, когда
-              сами выйдете с сообщением («как там / когда ответ»).
+              сами выйдете с сообщением. «На паузе» — клиента не трогаем; когда продолжите, снимите
+              паузу — отсчёт работы с этого дня.
             </p>
             {canWaitNext && (
               <Input

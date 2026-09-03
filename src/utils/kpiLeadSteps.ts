@@ -182,14 +182,13 @@ export function evaluateKpiLead(
 
   const parts: string[] = []
   if (n < minMoments) parts.push(`содержательных шагов ${n} из ${minMoments}`)
-  if (days < 3) parts.push(`дней с работой ${days} из 3`)
-  if (!hasCallOrVisit) parts.push('нет звонка и нет визита')
-  if (!hasCommercial) parts.push('нет КП / образцов / сдвига этапа')
+  if (days < 2) parts.push(`дней с работой ${days} из 2`)
+  if (types < 2) parts.push(`видов работы ${types} из 2`)
 
-  const qualifies = n >= minMoments && days >= 3 && hasCallOrVisit && hasCommercial
+  const qualifies = n >= minMoments && days >= 2 && types >= 2
   const reason = qualifies
-    ? `Засчитан: ${n} шагов за ${days} дн., есть контакт (звонок/визит) и КП/образцы/этап.`
-    : `Не засчитан: ${parts.join('; ')}. Нужно: 4 содержательных шага, 3 разных дня, звонок или визит, и КП либо образцы.`
+    ? `Засчитан: ${n} шагов за ${days} дн., ${types} вида работы (как Шахноза: КП + этап + звонок).`
+    : `Не засчитан: ${parts.join('; ')}. Нужно: ${minMoments} содержательных шага, 2 разных дня и 2 разных вида работы. Звонок и КП вместе не обязательны.`
 
   return {
     significantMoments: n,

@@ -211,7 +211,15 @@ export function explainKpiLead(opts: {
   const howToFix: string[] = []
 
   let blockingReason: string
-  if (counted) {
+  if (client.kpiManualMonth === month) {
+    if (client.kpiManualIncluded) {
+      blockingReason = counted
+        ? `Админ вручную засчитал лид за ${formatMonthHuman(month)}. Ночной анализ не снимет.`
+        : `Админ отметил «засчитать», но в журнале ещё нет записи — нажмите «Засчитать» ещё раз.`
+    } else {
+      blockingReason = `Админ вручную снял лид из KPI за ${formatMonthHuman(month)}. Система сама не вернёт, пока не нажмёте «Засчитать».`
+    }
+  } else if (counted) {
     blockingReason = `Засчитан в зарплату за ${formatMonthHuman(month)}. Полки: ${catList(shelvesFromLog)}.`
   } else if (activeMonths > 3) {
     blockingReason = `Не засчитан, потому что это уже ${activeMonths}-й месяц ведения (лимит 3). Сколько бы работы ни было — в KPI-лид не идёт.`
@@ -369,7 +377,7 @@ export function explainKpiLead(opts: {
 
   if (!counted && journalLabel === 'active' && activeMonths <= 3 && !isFinal) {
     howToFix.push(
-      `В карточке ${firstName} → История: 4 содержательных шага, в 3 разных дня, плюс звонок или визит и КП либо образцы. Не три «написала».`,
+      `В карточке ${firstName} → История: 3 содержательных шага, в 2 разных дня, 2 вида работы (как Шахноза: КП + этап + звонок). Не три «написала». Админ может нажать «Засчитать».`,
     )
     howToFix.push(
       `Пример 1: «Отправила КП ${firstName} на сатин 40/1, ширина 240, 2000 м».`,

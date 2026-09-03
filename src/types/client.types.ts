@@ -99,6 +99,9 @@ export interface Client {
   kpiSignificantMoments?: number | null
   kpiQualificationReason?: string | null
   kpiQualifiedAt?: unknown
+  /** Admin override for this month: true = force in KPI, false = force out */
+  kpiManualIncluded?: boolean | null
+  kpiManualMonth?: string | null
   createdAt: unknown
   updatedAt: unknown
 }

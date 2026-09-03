@@ -64,7 +64,7 @@ export function KpiExplanation({ role }: { role: KpiPayrollRole }) {
       )}
 
       <p className="text-xs leading-relaxed text-muted">
-        Лид в блок 2: 4 шага, 3 дня, звонок/визит и КП/образцы. Норма по плану — около 70–80%, не сверхвыполнение.
+        Лид в блок 2: 3 шага, 2 дня, 2 вида работы (как Шахноза). Админ может засчитать вручную.
       </p>
     </Card>
   )

@@ -14,6 +14,7 @@ import { KpiHeadPanel } from '@/components/kpi/KpiHeadPanel'
 import { KpiDesignerPanel } from '@/components/kpi/KpiDesignerPanel'
 import { KpiAssistantPanel } from '@/components/kpi/KpiAssistantPanel'
 import { KpiLeadAudit } from '@/components/kpi/KpiLeadAudit'
+import { KpiOverrideButtons } from '@/components/kpi/KpiOverrideButtons'
 import { LEAD_CATEGORIES } from '@/constants/clientMeta'
 import {
   KPI_ROLE_TEMPLATES,
@@ -57,7 +58,7 @@ function leadCats(lead: { categories?: LeadCategory[]; category?: LeadCategory }
 type DeptTab = 'leads' | 'audit' | 'head' | 'designer' | 'assistant'
 
 export function KPI() {
-  const { user } = useAuth()
+  const { user, isAdmin } = useAuth()
   const { users } = useUsers(true)
   const { clients } = useClients()
   const [month, setMonth] = useState(getCurrentMonth())
@@ -111,7 +112,7 @@ export function KPI() {
         ))}
       </div>
 
-      {deptTab === 'audit' && <KpiLeadAudit clients={clients} />}
+      {deptTab === 'audit' && <KpiLeadAudit clients={clients} initialMonth={month} />}
       {deptTab === 'head' && <KpiHeadPanel month={month} />}
       {deptTab === 'designer' && <KpiDesignerPanel month={month} />}
       {deptTab === 'assistant' && <KpiAssistantPanel month={month} />}
@@ -125,6 +126,7 @@ export function KPI() {
           clients={clients}
           adminId={user?.id || ''}
           adminName={user?.name || ''}
+          isAdmin={isAdmin}
         />
       )}
     </div>
@@ -140,6 +142,7 @@ function KpiPayrollPage({
   clients,
   adminId,
   adminName,
+  isAdmin,
 }: {
   month: string
   setMonth: (v: string) => void
@@ -149,6 +152,7 @@ function KpiPayrollPage({
   clients: ReturnType<typeof useClients>['clients']
   adminId: string
   adminName: string
+  isAdmin: boolean
 }) {
   const tpl = KPI_ROLE_TEMPLATES[role]
   const manager = useMemo(() => findPayrollManager(users, role), [users, role])
@@ -403,8 +407,8 @@ function KpiPayrollPage({
       <Card className="space-y-3">
         <h2 className="text-base font-semibold text-text">Засчитанные KPI-лиды</h2>
         <p className="text-xs text-muted">
-          Почему засчитан: обоснование Groq + категории (ткань / ГП / Европа). Клиент открывается в
-          CRM.
+          Почему засчитан: шаги в Истории + категории (ткань / ГП / Европа). Админ может убрать лид
+          из факта кнопкой «Убрать из KPI».
         </p>
         {leadsLoading ? (
           <p className="text-sm text-muted">Загрузка журнала…</p>
@@ -447,6 +451,9 @@ function KpiPayrollPage({
                     <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
                       засчитан
                     </span>
+                    {isAdmin && client && (
+                      <KpiOverrideButtons client={client} month={month} log={lead} counted />
+                    )}
                   </div>
                   <p className="mt-1 text-sm leading-relaxed text-text">{reason}</p>
                 </li>
@@ -460,6 +467,7 @@ function KpiPayrollPage({
         <h2 className="text-base font-semibold text-text">Активные, но не засчитанные</h2>
         <p className="text-xs text-muted">
           Клиенты этого менеджера, у кого за месяц есть активность в CRM, но KPI-лид не прошёл.
+          Админ может взять клиента из списка и нажать «Засчитать».
         </p>
         {notCounted.length === 0 ? (
           <p className="text-sm text-muted">Таких клиентов нет.</p>
@@ -477,6 +485,9 @@ function KpiPayrollPage({
                   <span className="rounded-md bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800">
                     не в факте
                   </span>
+                  {isAdmin && (
+                    <KpiOverrideButtons client={c} month={month} counted={false} />
+                  )}
                 </div>
                 <p className="mt-1 text-sm leading-relaxed text-muted">
                   {c.kpiQualificationReason ||

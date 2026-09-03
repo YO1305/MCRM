@@ -165,7 +165,7 @@ export function ClientDetail({
   const groqUi = effectiveGroqActivity(client || {}, month)
   const kpiCurrent = kpiMonthIsCurrent(client || {}, month)
   const minDays = activityConfig?.minActiveDays ?? 10
-  const minMoments = activityConfig?.minKpiMoments ?? 4
+  const minMoments = activityConfig?.minKpiMoments ?? 3
 
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')

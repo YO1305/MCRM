@@ -229,6 +229,14 @@ export async function runActivityAnalysisNow(input?: {
   return adminApi<GroqActivityAnalysisResult>('/api/ai-activity-analysis', input || {})
 }
 
+export async function overrideKpiLead(input: {
+  action: 'include' | 'exclude'
+  clientId: string
+  month: string
+}): Promise<{ ok: boolean }> {
+  return adminApi('/api/kpi-lead-override', input)
+}
+
 /** Keep calling until every open lead for the month is processed. */
 export async function runActivityAnalysisUntilDone(input?: {
   month?: string
@@ -241,15 +249,17 @@ export async function runActivityAnalysisUntilDone(input?: {
   let remaining = 0
   let month = input?.month
   let stuck = 0
+  let quotaTries = 0
+  let lastRemaining = -1
 
-  for (let i = 0; i < 80; i += 1) {
+  for (let i = 0; i < 12; i += 1) {
     try {
       const result = await runActivityAnalysisNow({
         force: true,
         month: input?.month,
         runStartedAt,
-        maxClients: 25,
-        timeBudgetMs: 40000,
+        maxClients: 20,
+        timeBudgetMs: 25000,
       })
       const batch = Number(result.processed) || 0
       processed += batch
@@ -261,25 +271,45 @@ export async function runActivityAnalysisUntilDone(input?: {
       if (remaining <= 0 && result.code !== 'QUOTA') {
         return { ok: true, month, processed, remaining: 0, errors, lastError: lastError || undefined }
       }
-      if (result.code === 'QUOTA' || /Перегрузка|Quota|RESOURCE_EXHAUSTED/i.test(result.lastError || '')) {
-        await new Promise((r) => setTimeout(r, 8000))
-        stuck = 0
+      const quota =
+        result.code === 'QUOTA' || /Перегрузка|Quota|RESOURCE_EXHAUSTED/i.test(result.lastError || '')
+      if (quota) {
+        quotaTries += 1
+        if (quotaTries >= 3) break
+        await new Promise((r) => setTimeout(r, 4000))
         continue
       }
-      if (batch === 0) {
+      quotaTries = 0
+      if (remaining === lastRemaining && batch === 0) {
         stuck += 1
         if (stuck >= 2) break
       } else {
         stuck = 0
+      }
+      lastRemaining = remaining
+      if (batch === 0) {
+        stuck += 1
+        if (stuck >= 2) break
       }
     } catch (err) {
       lastError = err instanceof Error ? err.message : String(err)
       const retry =
         /504|502|503|Quota|RESOURCE_EXHAUSTED|Перегрузка/i.test(lastError) ||
         /http\/504|http\/502/.test((err as Error & { code?: string }).code || '')
-      if (retry && i < 79) {
-        await new Promise((r) => setTimeout(r, 8000))
+      if (retry && quotaTries < 3) {
+        quotaTries += 1
+        await new Promise((r) => setTimeout(r, 4000))
         continue
+      }
+      if (processed > 0) {
+        return {
+          ok: true,
+          month,
+          processed,
+          remaining,
+          errors,
+          lastError,
+        }
       }
       throw err
     }

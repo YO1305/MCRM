@@ -27,7 +27,7 @@ import {
   formatPercent,
   suggestDealsForMonth,
 } from '@/constants/kpiPayroll'
-import { groqActivityIsCurrent, kpiMonthIsCurrent } from '@/utils/groqLeadActivity'
+import { groqActivityIsCurrent } from '@/utils/groqLeadActivity'
 import { getPayrollMonth } from '@/utils/dates'
 import type { DealBandId, KpiPayrollInputs, KpiPayrollRole } from '@/types/kpiPayroll.types'
 import type { LeadCategory } from '@/types/kpiLead.types'
@@ -201,10 +201,8 @@ function KpiPayrollPage({
       .filter((c) => c.assignedTo === managerId)
       // must be active this month (strict check)
       .filter((c) => groqActivityIsCurrent(c, month) && c.activityLabel === 'active')
-      // not already in the KPI log
+      // not already in the KPI journal — badge on the card is not enough
       .filter((c) => !countedIds.has(c.id))
-      // not already qualified this month
-      .filter((c) => !(c.kpiQualified === true && kpiMonthIsCurrent(c, month)))
       // exclude final stages (rejected/failed/abandoned/deal)
       .filter((c) => !FINAL_STAGES.has(c.stage))
       // exclude paused (wait_status contains "на паузе")

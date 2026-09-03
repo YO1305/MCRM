@@ -22,23 +22,50 @@ export const HISTORY_TYPE_LABELS: Record<string, string> = {
 }
 
 const CLIENT_STEP_HINTS: { re: RegExp; label: string }[] = [
-  { re: /запрос\w*\s+образц|попросил\w*\s+образц|нужн\w*\s+образц/i, label: 'запрос образцов' },
+  { re: /клиент\s+(запрос|попросил|просил|прислал|написал|подтверд|соглас|одобрил|дал)/i, label: 'действие клиента в тексте' },
+  { re: /запрос\w*\s+(кп|коммерч|образц)|попросил\w*\s+(кп|образц)|нужн\w*\s+образц/i, label: 'клиент запросил КП / образцы' },
   { re: /\bтз\b|техническ\w+\s+задани|спецификац/i, label: 'ТЗ / спецификация' },
   { re: /плотност|состав|ширин/i, label: 'запрос параметров ткани' },
   { re: /договор|поставк|инкотерм|логистик/i, label: 'условия договора / поставки' },
   { re: /сч[её]т|реквизит|инвойс/i, label: 'счёт / реквизиты' },
-  { re: /получил\w*\s+образц|образц\w*\s+дошл|подтверд\w+\s+получен/i, label: 'подтвердил получение образцов' },
+  { re: /получил\w*\s+(образц|кп)|образц\w*\s+дошл|подтверд\w+\s+получен/i, label: 'подтвердил получение' },
   { re: /выкрас|обратн\w+\s+связ|понравил|не понравил|одобрил/i, label: 'обратная связь / одобрение' },
   { re: /объ[её]м|метров|срок постав|готов\w+\s+к/i, label: 'объём / сроки / готовность' },
-  { re: /артикул|цвет\b/i, label: 'артикул / цвет' },
+  { re: /артикул/i, label: 'артикул' },
   { re: /предоплат|подпис|оплат/i, label: 'предоплата / подпись' },
 ]
 
-const MANAGER_ONLY_HINTS: { re: RegExp; label: string }[] = [
-  { re: /отправил\w*\s+прайс|выслал\w*\s+прайс|каталог/i, label: 'менеджер отправил прайс/каталог' },
-  { re: /напомнил|написала?$|написала?\s|позвонил|созвонил/i, label: 'напоминание / исходящий контакт' },
-  { re: /подготов\w+\s+образц/i, label: 'менеджер подготовил образцы' },
-  { re: /подумаем|позже|на паузе|ждём решения|ждем решения/i, label: 'ожидание без шага клиента' },
+const MANAGER_ONLY_HINTS: { re: RegExp; label: string; rewrite: string }[] = [
+  {
+    re: /отправил\w*\s+(кп|коммерч)|выслал\w*\s+(кп|коммерч)|подготов\w+\s+(кп|коммерч)|кп\s+отправ/i,
+    label: 'менеджер сама отправила КП',
+    rewrite: 'Клиент запросила КП на [артикул, ширина, метры]. КП отправлена.',
+  },
+  {
+    re: /отправил\w*\s+прайс|выслал\w*\s+прайс|каталог/i,
+    label: 'менеджер отправила прайс/каталог',
+    rewrite: 'Клиент запросила прайс на [артикул / вид ткани].',
+  },
+  {
+    re: /шаг выполнен|предоставить цен/i,
+    label: 'внутренний шаг менеджера',
+    rewrite: 'Клиент запросила цены / КП по [конкретный артикул].',
+  },
+  {
+    re: /напомнил|написала|написал\b|позвонил|созвонил/i,
+    label: 'исходящий контакт менеджера',
+    rewrite: 'Клиент ответила: [что именно попросила / подтвердила].',
+  },
+  {
+    re: /подготов\w+\s+образц/i,
+    label: 'менеджер подготовила образцы',
+    rewrite: 'Клиент запросила образцы артикулов [список] / подтвердила получение.',
+  },
+  {
+    re: /подумаем|позже|на паузе|ждём решения|ждем решения|ожида/i,
+    label: 'ожидание без шага клиента',
+    rewrite: 'Клиент попросила подождать до [дата] / пришлёт ТЗ [что именно].',
+  },
 ]
 
 export type GateStatus = 'pass' | 'fail' | 'info' | 'skip'
@@ -58,6 +85,11 @@ export interface HistoryLineExplain {
   skip: boolean
   skipReason?: string
   countsAsWork: boolean
+  kind: 'client' | 'manager' | 'noise'
+  /** yes = шаг клиента (KPI), no = только работа менеджера */
+  kpiCounted: boolean
+  why: string
+  rewrite?: string
   looksLikeClientStep: string | null
   looksLikeManagerOnly: string | null
 }
@@ -88,6 +120,11 @@ export interface KpiLeadExplanation {
   gates: KpiExplainGate[]
   history: HistoryLineExplain[]
   monthHistoryCount: number
+  managerWorkCount: number
+  clientStepCount: number
+  needMoreSteps: number
+  blockingReason: string
+  howToFix: string[]
   recommendations: string[]
 }
 
@@ -153,11 +190,72 @@ export function classifyJournalLabel(
   return 'passive'
 }
 
-function matchHint(text: string, list: { re: RegExp; label: string }[]): string | null {
+function matchHint<T extends { re: RegExp; label: string }>(
+  text: string,
+  list: T[],
+): T | null {
   for (const item of list) {
-    if (item.re.test(text)) return item.label
+    if (item.re.test(text)) return item
   }
   return null
+}
+
+function classifyKpiLine(text: string, countsAsWork: boolean, skip: boolean): {
+  kind: 'client' | 'manager' | 'noise'
+  kpiCounted: boolean
+  why: string
+  rewrite?: string
+  looksLikeClientStep: string | null
+  looksLikeManagerOnly: string | null
+} {
+  if (skip || !countsAsWork) {
+    return {
+      kind: 'noise',
+      kpiCounted: false,
+      why: 'Не учитывается ни как работа, ни как KPI.',
+      looksLikeClientStep: null,
+      looksLikeManagerOnly: null,
+    }
+  }
+  const clientHit = matchHint(text, CLIENT_STEP_HINTS)
+  if (clientHit) {
+    return {
+      kind: 'client',
+      kpiCounted: true,
+      why: `Учтено как шаг клиента: ${clientHit.label}. Это идёт в KPI-лид.`,
+      looksLikeClientStep: clientHit.label,
+      looksLikeManagerOnly: null,
+    }
+  }
+  const mgr = matchHint(text, MANAGER_ONLY_HINTS)
+  if (mgr) {
+    return {
+      kind: 'manager',
+      kpiCounted: false,
+      why: `Учтено только как работа менеджера (${mgr.label}). Клиент из‑за этого активный, но в KPI-лид эта строка НЕ идёт.`,
+      rewrite: mgr.rewrite,
+      looksLikeClientStep: null,
+      looksLikeManagerOnly: mgr.label,
+    }
+  }
+  if (/\bкп\b|коммерческ/i.test(text)) {
+    return {
+      kind: 'manager',
+      kpiCounted: false,
+      why: 'В тексте есть КП / коммерческое, но нет действия клиента («запросила», «подтвердила»). Это работа менеджера, не KPI.',
+      rewrite: 'Клиент запросила КП на [артикул, ширина, метры]. КП отправлена.',
+      looksLikeClientStep: null,
+      looksLikeManagerOnly: 'КП без шага клиента',
+    }
+  }
+  return {
+    kind: 'manager',
+    kpiCounted: false,
+    why: 'Работа в журнале есть (активный), но в тексте нет шага клиента. Groq такое обычно не считает в KPI.',
+    rewrite: 'Клиент запросила [КП / образцы / ТЗ / объём] — напишите её слова, не «я отправила».',
+    looksLikeClientStep: null,
+    looksLikeManagerOnly: 'неясная формулировка',
+  }
 }
 
 export function formatMonthHuman(month: string): string {
@@ -195,6 +293,7 @@ export function explainKpiLead(opts: {
       const pauseOnly = e.type === 'wait_status' && isPauseText(e.text)
       const countsAsWork = !skip && !pauseOnly
       const text = String(e.text || '').trim()
+      const kpi = classifyKpiLine(text, countsAsWork, skip)
       return {
         date,
         type: e.type,
@@ -207,8 +306,12 @@ export function explainKpiLead(opts: {
             ? 'Только статус «на паузе» — день работы не даёт'
             : undefined,
         countsAsWork,
-        looksLikeClientStep: matchHint(text, CLIENT_STEP_HINTS),
-        looksLikeManagerOnly: matchHint(text, MANAGER_ONLY_HINTS),
+        kind: kpi.kind,
+        kpiCounted: kpi.kpiCounted,
+        why: kpi.why,
+        rewrite: kpi.rewrite,
+        looksLikeClientStep: kpi.looksLikeClientStep,
+        looksLikeManagerOnly: kpi.looksLikeManagerOnly,
       }
     })
 
@@ -226,8 +329,51 @@ export function explainKpiLead(opts: {
     : []
 
   const counted = Boolean(log)
+  const autoDeal = client.stage === 'deal' && activeMonths === 1
+  const isFinal = FINAL_STAGES.has(client.stage)
+  const managerWorkCount = historyLines.filter((h) => h.countsAsWork).length
+  const clientStepCount = historyLines.filter((h) => h.kpiCounted).length
+  const needMoreSteps = Math.max(0, minKpiMoments - clientStepCount)
+  const firstName = (client.name || 'клиент').split(/\s+/)[0]
+
   const gates: KpiExplainGate[] = []
   const recommendations: string[] = []
+  const howToFix: string[] = []
+
+  let blockingReason: string
+  if (counted) {
+    blockingReason = `Засчитан в зарплату за ${formatMonthHuman(month)}. Полки: ${catList(shelvesFromLog)}.`
+  } else if (activeMonths > 3) {
+    blockingReason = `Не засчитан, потому что это уже ${activeMonths}-й месяц ведения (лимит 3). Сколько бы работы ни было — в KPI-лид не идёт.`
+  } else if (journalLabel === 'paused') {
+    blockingReason = `Не засчитан: в карточке «на паузе» и за ${formatMonthHuman(month)} другой работы в истории нет.`
+  } else if (journalLabel !== 'active') {
+    blockingReason = `Не засчитан: за ${formatMonthHuman(month)} в истории нет ни одной рабочей записи. Что было в Telegram — система не видит.`
+  } else if (isFinal && !autoDeal) {
+    blockingReason = `Не засчитан: этап «${stageLabel(client.stage)}» в квалификацию не берётся.`
+  } else if (clientStepCount < minKpiMoments) {
+    blockingReason = `Не засчитан, хотя работа есть. В журнале ${managerWorkCount} записей менеджера (это делает лид АКТИВНЫМ), но шагов КЛИЕНТА похоже ${clientStepCount} из ${minKpiMoments}. Отправка КП / прайса / «написала» — работа менеджера, не KPI-лид.`
+  } else {
+    blockingReason = `Не засчитан: в тексте уже видно ${clientStepCount} шага клиента, но в журнале зарплаты (kpi_lead_log) за ${month} записи нет. Нужно прогнать анализ за этот месяц на дашборде.`
+  }
+
+  gates.push({
+    id: 'human',
+    title: 'Простыми словами',
+    status: counted ? 'pass' : 'fail',
+    detail: blockingReason,
+  })
+
+  gates.push({
+    id: 'score',
+    title: 'Что учтено / что нет',
+    status: counted ? 'pass' : clientStepCount >= minKpiMoments ? 'info' : 'fail',
+    detail: `За ${formatMonthHuman(month)}: записей в истории ${monthEntries.length}. Учтено как работа менеджера (активный лид): ${managerWorkCount}. Учтено как шаг клиента (KPI): ${clientStepCount} из ${minKpiMoments}. ${
+      counted
+        ? 'Порог шагов выполнен или стоит автозачёт — клиент в зарплате.'
+        : `До KPI-лида не хватает ${needMoreSteps} шаг(а) клиента в тексте истории.`
+    }`,
+  })
 
   gates.push({
     id: 'source',
@@ -265,7 +411,6 @@ export function explainKpiLead(opts: {
       : `В журнале KPI за ${month} этой карточки нет. Значит в зарплату (ткань / ГП / Европа) клиент не попал, даже если в карточке сейчас стоит «квалифицирован».`,
   })
 
-  const autoDeal = client.stage === 'deal' && activeMonths === 1
   gates.push({
     id: 'autodeal',
     title: 'Автозачёт: сделка в 1-м месяце (ступень 2-В)',
@@ -277,7 +422,6 @@ export function explainKpiLead(opts: {
         : 'Этапа «Сделка» нет — автозачёт не применяется.',
   })
 
-  const isFinal = FINAL_STAGES.has(client.stage)
   gates.push({
     id: 'final',
     title: 'Закрытые этапы (ступень 2-Г)',
@@ -351,59 +495,58 @@ export function explainKpiLead(opts: {
       : `Пока не засчитан. Если бы засчитали, полки взялись бы из карточки: ${catList(shelvesFromCard)} (страна ${client.country || 'не указана'}, продукция ${(client.products || []).join(', ') || 'не указана'}).`,
   })
 
-  const clientStepLines = historyLines.filter((h) => h.looksLikeClientStep)
-  const managerOnlyLines = historyLines.filter((h) => h.looksLikeManagerOnly && !h.looksLikeClientStep)
+  const managerOnlyLines = historyLines.filter((h) => h.countsAsWork && !h.kpiCounted)
 
-  if (!counted) {
-    if (journalLabel === 'passive') {
-      recommendations.push(
-        'Занесите в «Историю» реальные действия: итог звонка, комментарий с фактом, смену этапа, следующий шаг. Пустой месяц = пассивный = не KPI.',
+  if (!counted && journalLabel === 'active' && activeMonths <= 3 && !isFinal) {
+    howToFix.push(
+      `Откройте карточку ${firstName} → История и допишите ещё ${needMoreSteps || minKpiMoments} фразы, где субъект — клиент, не менеджер.`,
+    )
+    howToFix.push(
+      `Пример 1: «${firstName} запросила КП на сатин 40/1, ширина 240, объём 2000 м».`,
+    )
+    howToFix.push(
+      `Пример 2: «${firstName} подтвердила получение КП / образцов, ждёт расчёт по артикулу …».`,
+    )
+    howToFix.push(
+      `Пример 3: «${firstName} согласовала артикул / цвет / срок поставки».`,
+    )
+    if (managerOnlyLines.length) {
+      howToFix.push(
+        `Сейчас в журнале как работа менеджера (активно, но не KPI): ${managerOnlyLines
+          .slice(0, 4)
+          .map((h) => `${h.date} — ${h.text.slice(0, 80)}`)
+          .join('; ')}. Перепишите эти факты через «клиент запросила / подтвердила», если так и было.`,
       )
     }
-    if (journalLabel === 'paused') {
-      recommendations.push(
-        'Снимите чистое «на паузе» или добавьте работу в том же месяце. Одна пауза без других записей KPI не открывает.',
-      )
-    }
-    if (journalLabel === 'active' && activeMonths <= 3 && !isFinal) {
-      if (clientStepLines.length < minKpiMoments) {
-        recommendations.push(
-          `В тексте журнала похожих на шаг клиента фраз: ${clientStepLines.length} (нужно ${minKpiMoments}). Пишите конкретику: «клиент запросил артикул / ТЗ / объём / подтвердил образцы», а не «написала, ждём».`,
-        )
-      } else {
-        recommendations.push(
-          'По журналу работа есть и фразы похожи на шаги клиента, но в kpi_lead_log записи нет. Запустите «Анализ сейчас» в Настройки → ИИ в том месяце, либо проверьте, что прогон был до конца месяца. Прошлый месяц ночной скрипт уже не переписывает.',
-        )
-      }
-    }
-    if (managerOnlyLines.length && !clientStepLines.length) {
-      recommendations.push(
-        'Все записи похожи на действия менеджера (прайс, напомнил, подготовил). Это делает клиента активным, но KPI-лидом — нет.',
-      )
-    }
-  } else {
-    recommendations.push(
-      `Засчитан в KPI за ${formatMonthHuman(month)}. В зарплате Айгуль/Кундуз это +1 к полкам ${catList(shelvesFromLog)}.`,
+    howToFix.push(
+      'После записи в историю: Дашборд → выбрать этот месяц → «Переанализировать месяц». Иначе зарплатный журнал не обновится.',
+    )
+  } else if (!counted && journalLabel !== 'active') {
+    howToFix.push(
+      `Сначала занесите в Историю хотя бы один факт работы за ${formatMonthHuman(month)} (звонок, комментарий, этап). Без этого KPI даже не рассматривается.`,
+    )
+  } else if (!counted && activeMonths > 3) {
+    howToFix.push(
+      'Проверьте дату открытия лида. Если в CRM попали позже реального старта — поставьте день первого общения. Если лид правда 4+ месяца — в KPI он уже не идёт, это правило.',
+    )
+  } else if (!counted && clientStepCount >= minKpiMoments) {
+    howToFix.push(
+      `На дашборде выберите ${formatMonthHuman(month)} и нажмите «Переанализировать месяц» — шаги клиента в тексте уже есть.`,
     )
   }
 
-  let verdict: string
-  if (counted) {
-    verdict = `ЗАСЧИТАН в KPI-лиды за ${formatMonthHuman(month)}.`
-  } else if (activeMonths > 3) {
-    verdict = `НЕ засчитан: ${activeMonths}-й месяц ведения (лимит 3).`
-  } else if (journalLabel !== 'active') {
-    verdict =
-      journalLabel === 'paused'
-        ? 'НЕ засчитан: на паузе без другой работы в этом месяце (ступень 1 не пройдена).'
-        : 'НЕ засчитан: пассивный — в истории месяца нет работы (ступень 1 не пройдена).'
-  } else if (isFinal && !autoDeal) {
-    verdict = `НЕ засчитан: этап «${stageLabel(client.stage)}» не квалифицируется.`
-  } else if (groqKpiMatches && client.kpiQualified === false) {
-    verdict = `НЕ засчитан: активный, но Groq не набрал ${minKpiMoments} шагов клиента (${client.kpiSignificantMoments ?? 0}).`
+  if (!counted) {
+    recommendations.push(blockingReason)
+    recommendations.push(...howToFix)
   } else {
-    verdict = `НЕ засчитан: в журнале KPI за ${month} записи нет.`
+    recommendations.push(
+      `Засчитан. В зарплате это +1 к полкам ${catList(shelvesFromLog)}. Новых шагов для этого месяца не нужно.`,
+    )
   }
+
+  const verdict = counted
+    ? `ЗАСЧИТАНА в KPI-лиды за ${formatMonthHuman(month)}.`
+    : `НЕ засчитана. ${blockingReason}`
 
   return {
     counted,
@@ -431,6 +574,11 @@ export function explainKpiLead(opts: {
     gates,
     history: historyLines,
     monthHistoryCount: monthEntries.length,
+    managerWorkCount,
+    clientStepCount,
+    needMoreSteps,
+    blockingReason,
+    howToFix,
     recommendations,
   }
 }

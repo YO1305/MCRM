@@ -6,6 +6,7 @@ import {
 } from 'firebase/auth'
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore'
 import { auth, db, firebaseConfig } from './config'
+import { enqueueSerial } from '@/utils/serialQueue'
 import type { AppSection } from '@/constants/access'
 import type { Position, Role } from '@/types/user.types'
 
@@ -235,7 +236,7 @@ export async function overrideKpiLead(input: {
   month: string
   logId?: string
 }): Promise<{ ok: boolean }> {
-  return adminApi('/api/kpi-lead-override', input)
+  return enqueueSerial(() => adminApi('/api/kpi-lead-override', input), 500)
 }
 
 /** Keep calling until every open lead for the month is processed. */

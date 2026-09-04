@@ -15,6 +15,7 @@ import { KpiDesignerPanel } from '@/components/kpi/KpiDesignerPanel'
 import { KpiAssistantPanel } from '@/components/kpi/KpiAssistantPanel'
 import { KpiLeadAudit } from '@/components/kpi/KpiLeadAudit'
 import { KpiOverrideButtons } from '@/components/kpi/KpiOverrideButtons'
+import { KpiApprovalBar } from '@/components/kpi/KpiApprovalBar'
 import { LEAD_CATEGORIES } from '@/constants/clientMeta'
 import {
   KPI_ROLE_TEMPLATES,
@@ -158,7 +159,7 @@ function KpiPayrollPage({
   const manager = useMemo(() => findPayrollManager(users, role), [users, role])
   const managerId = manager?.id || ''
   const { counts, leads, loading: leadsLoading } = useKpiLeads(managerId, month)
-  const { inputs: savedInputs, saved, loading, saving, error, save } = useKpiPayroll(
+  const { inputs: savedInputs, saved, loading, saving, error, save, approved } = useKpiPayroll(
     role,
     month,
     true,
@@ -227,8 +228,34 @@ function KpiPayrollPage({
   async function handleSave() {
     setSavedOk('')
     try {
-      await save(draft, { id: adminId, name: adminName })
-      setSavedOk('Расчёт сохранён')
+      await save(draft, { id: adminId, name: adminName }, { mode: 'draft' })
+      setSavedOk('Черновик сохранён')
+    } catch {
+      /* error in hook */
+    }
+  }
+
+  async function handleApprove() {
+    setSavedOk('')
+    try {
+      const frozen = draft.leadOverride ?? { ...leadFacts }
+      const next = { ...draft, leadOverride: frozen }
+      setDraft(next)
+      await save(next, { id: adminId, name: adminName }, {
+        mode: 'approve',
+        approvedHandsTotal: calc.handsTotal,
+      })
+      setSavedOk('Утверждено. Это финальная цифра после подписи директора.')
+    } catch {
+      /* error in hook */
+    }
+  }
+
+  async function handleUnapprove() {
+    setSavedOk('')
+    try {
+      await save(draft, { id: adminId, name: adminName }, { mode: 'unapprove' })
+      setSavedOk('Снова черновик — можно править')
     } catch {
       /* error in hook */
     }
@@ -241,9 +268,9 @@ function KpiPayrollPage({
       <div>
         <h1 className="text-2xl font-bold text-text">KPI · зарплата менеджеров по лидам</h1>
         <p className="mt-1 text-sm text-muted">
-          Цифры ткань / ГП / Европа берутся из списка лидов ниже за выбранный месяц. Переанализ
-          августа виден только если сверху выбран август. Если включена ручная цифра — журнал её не
-          меняет.
+          Цифры ткань / ГП / Европа берутся из списка лидов ниже за выбранный месяц. «Сохранить» —
+          черновик. «Утверждено» — после подписи директора, цифра больше не плывёт. Засчитать и Убрать
+          идут по одной: Firebase режет пачку записей лимитом, из‑за этого раньше было «база занята».
         </p>
       </div>
 
@@ -297,6 +324,14 @@ function KpiPayrollPage({
 
       <KpiExplanation role={role} />
 
+      <p className="rounded-lg border border-gray-100 bg-background px-3 py-2 text-xs text-muted">
+        Почему не параллельно: разбор и кнопки пишут в одну облачную базу Google. У неё лимит записей
+        в секунду. Если жать всё сразу — отказ Quota exceeded / «занято». Очередь: одно изменение, пауза,
+        следующее. Полный разбор лидов не запускайте в ту же минуту, что Засчитать / Убрать /
+        Утверждено.
+      </p>
+
+      <fieldset disabled={approved} className="min-w-0 space-y-4 border-0 p-0 disabled:opacity-80">
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <StatChip label="На руки" value={formatKpiMoney(calc.handsTotal)} tone="secondary" />
         <StatChip label="Фикса" value={formatKpiMoney(calc.fixa)} />
@@ -498,6 +533,7 @@ function KpiPayrollPage({
                         month={month}
                         log={lead}
                         counted
+                        locked={approved}
                         onDone={() => patch({ leadOverride: null })}
                       />
                     )}
@@ -537,6 +573,7 @@ function KpiPayrollPage({
                       client={c}
                       month={month}
                       counted={false}
+                      locked={approved}
                       onDone={() => patch({ leadOverride: null })}
                     />
                   )}
@@ -733,6 +770,7 @@ function KpiPayrollPage({
           ))}
         </ul>
       </Card>
+      </fieldset>
 
       <Card className="flex flex-wrap items-center justify-between gap-3">
         <div>
@@ -740,13 +778,22 @@ function KpiPayrollPage({
           <p className="text-xs text-muted">
             {formatKpiMoney(calc.fixa)} + {formatKpiMoney(calc.block2Total)} +{' '}
             {formatKpiMoney(calc.block3Total)}
+            {approved && saved?.approvedHandsTotal != null
+              ? ` · утверждено ${formatKpiMoney(saved.approvedHandsTotal)}`
+              : ''}
           </p>
           {error && <p className="mt-1 text-xs text-danger">{error}</p>}
           {savedOk && <p className="mt-1 text-xs text-emerald-700">{savedOk}</p>}
         </div>
-        <Button type="button" onClick={() => void handleSave()} disabled={saving || loading}>
-          {saving ? 'Сохранение…' : 'Сохранить расчёт месяца'}
-        </Button>
+        <KpiApprovalBar
+          approved={approved}
+          approvedByName={saved?.approvedByName}
+          saving={saving}
+          disabled={loading}
+          onSave={() => void handleSave()}
+          onApprove={() => void handleApprove()}
+          onUnapprove={() => void handleUnapprove()}
+        />
       </Card>
         </>
       )}

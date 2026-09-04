@@ -1,7 +1,8 @@
-import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { CertChecks, Money, NumField } from '@/components/kpi/KpiFields'
+import { KpiApprovalBar } from '@/components/kpi/KpiApprovalBar'
 import { ASSISTANT_SALARY, calcAssistant } from '@/constants/kpiDeptPayroll'
+import { useAuth } from '@/hooks/useAuth'
 import { useKpiDeptPayroll } from '@/hooks/useKpiDeptPayroll'
 import type { AssistantPayrollInput } from '@/types/kpiDeptPayroll.types'
 
@@ -50,8 +51,11 @@ const DUTY_GROUPS: { title: string; items: string[] }[] = [
 ]
 
 export function KpiAssistantPanel({ month }: { month: string }) {
-  const { assistant, setAssistant, loading, saving, error, save } = useKpiDeptPayroll('assistant', month)
+  const { user } = useAuth()
+  const { assistant, setAssistant, loading, saving, error, save, approved, approvedByName } =
+    useKpiDeptPayroll('assistant', month)
   const r = calcAssistant(assistant)
+  const actor = { id: user?.id || '', name: user?.name || '' }
 
   function patch(partial: Partial<AssistantPayrollInput>) {
     setAssistant((prev) => ({ ...prev, ...partial }))
@@ -61,6 +65,7 @@ export function KpiAssistantPanel({ month }: { month: string }) {
 
   return (
     <div className="space-y-4">
+      <fieldset disabled={approved} className="min-w-0 space-y-4 border-0 p-0 disabled:opacity-80">
       <Card className="space-y-3">
         <h2 className="text-base font-semibold">Ассистент отдела маркетинга</h2>
         <p className="text-sm text-muted">
@@ -119,15 +124,24 @@ export function KpiAssistantPanel({ month }: { month: string }) {
           </div>
         ))}
       </Card>
+      </fieldset>
 
       <Card>
         <p className="text-lg">
           На руки: <Money value={r.total} />
         </p>
         {error && <p className="mt-2 text-sm text-danger">{error}</p>}
-        <Button className="mt-3" type="button" disabled={saving} onClick={() => void save()}>
-          {saving ? 'Сохранение…' : 'Сохранить месяц'}
-        </Button>
+        <div className="mt-3">
+          <KpiApprovalBar
+            approved={approved}
+            approvedByName={approvedByName}
+            saving={saving}
+            saveLabel="Сохранить месяц"
+            onSave={() => void save(undefined, { mode: 'draft', user: actor })}
+            onApprove={() => void save(undefined, { mode: 'approve', user: actor })}
+            onUnapprove={() => void save(undefined, { mode: 'unapprove', user: actor })}
+          />
+        </div>
       </Card>
     </div>
   )

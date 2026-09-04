@@ -17,17 +17,19 @@ export function KpiOverrideButtons({
   month,
   log,
   counted,
+  locked,
   onDone,
 }: {
   client: Client
   month: string
   log?: KpiLeadLog | null
   counted: boolean
+  locked?: boolean
   onDone?: () => void
 }) {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
-  const tries = 5
+  const tries = 3
 
   async function run(kind: 'include' | 'exclude') {
     setBusy(true)
@@ -64,7 +66,7 @@ export function KpiOverrideButtons({
           type="button"
           size="sm"
           variant="danger"
-          disabled={busy}
+          disabled={busy || locked}
           onClick={() => run('exclude')}
         >
           {busy ? 'Снимаю…' : 'Убрать из KPI'}
@@ -74,13 +76,17 @@ export function KpiOverrideButtons({
           type="button"
           size="sm"
           variant="secondary"
-          disabled={busy}
+          disabled={busy || locked}
           onClick={() => run('include')}
         >
           {busy ? 'Засчитываю…' : 'Засчитать'}
         </Button>
       )}
-      {err ? <p className="max-w-[14rem] text-right text-xs text-rose-600">{err}</p> : null}
+      {locked ? (
+        <p className="max-w-[14rem] text-right text-xs text-muted">Месяц утверждён — журнал не трогаем</p>
+      ) : err ? (
+        <p className="max-w-[14rem] text-right text-xs text-rose-600">{err}</p>
+      ) : null}
     </div>
   )
 }

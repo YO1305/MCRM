@@ -29,12 +29,20 @@ export interface KpiPayrollInputs {
   leadOverride: { fabric: number; finished: number; europe: number } | null
 }
 
+export type KpiPayrollStatus = 'draft' | 'approved'
+
 export interface KpiPayrollDoc extends KpiPayrollInputs {
   id: string
   roleKey: KpiPayrollRole
   month: string
   savedBy?: string
   savedByName?: string
+  /** After director signs: payroll is final. */
+  payrollStatus?: KpiPayrollStatus
+  approvedAt?: unknown
+  approvedBy?: string
+  approvedByName?: string
+  approvedHandsTotal?: number
 }
 
 export interface KpiLeadFacts {

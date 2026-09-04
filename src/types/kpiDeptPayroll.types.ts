@@ -82,4 +82,8 @@ export interface KpiDeptPayrollDoc {
   head?: HeadPayrollInput
   designer?: DesignerPayrollInput
   assistant?: AssistantPayrollInput
+  payrollStatus?: 'draft' | 'approved'
+  approvedAt?: unknown
+  approvedBy?: string
+  approvedByName?: string
 }

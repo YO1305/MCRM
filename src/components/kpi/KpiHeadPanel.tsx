@@ -1,13 +1,18 @@
-import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { CertChecks, Money, NumField } from '@/components/kpi/KpiFields'
+import { KpiApprovalBar } from '@/components/kpi/KpiApprovalBar'
 import { HEAD_KPI_FUND, HEAD_SALARY, calcHead, formatPct } from '@/constants/kpiDeptPayroll'
+import { useAuth } from '@/hooks/useAuth'
 import { useKpiDeptPayroll } from '@/hooks/useKpiDeptPayroll'
 import { useHeadKpiLinks } from '@/hooks/useHeadKpiLinks'
 import type { DutyStatus, HeadPayrollInput, TeamLeadPcts } from '@/types/kpiDeptPayroll.types'
 
 export function KpiHeadPanel({ month }: { month: string }) {
-  const { head, setHead, loading, saving, error, save } = useKpiDeptPayroll('head', month)
+  const { user } = useAuth()
+  const { head, setHead, loading, saving, error, save, approved, approvedByName } = useKpiDeptPayroll(
+    'head',
+    month,
+  )
   const links = useHeadKpiLinks(month)
 
   const teamLeads: TeamLeadPcts = {
@@ -28,6 +33,7 @@ export function KpiHeadPanel({ month }: { month: string }) {
 
   return (
     <div className="space-y-4">
+      <fieldset disabled={approved} className="min-w-0 space-y-4 border-0 p-0 disabled:opacity-80">
       <Card className="space-y-3">
         <h2 className="text-base font-semibold">Начальник отдела маркетинга</h2>
         <p className="text-sm text-muted">
@@ -264,6 +270,7 @@ export function KpiHeadPanel({ month }: { month: string }) {
           </div>
         ))}
       </Card>
+      </fieldset>
 
       <Card>
         <p className="text-lg">
@@ -273,14 +280,32 @@ export function KpiHeadPanel({ month }: { month: string }) {
           Пример: фикса {HEAD_SALARY} + KPI до {HEAD_KPI_FUND} × 1,5 + выставки.
         </p>
         {error && <p className="mt-2 text-sm text-danger">{error}</p>}
-        <Button
-          className="mt-3"
-          type="button"
-          disabled={saving}
-          onClick={() => void save({ ...head, teamLeads, certificates })}
-        >
-          {saving ? 'Сохранение…' : 'Сохранить месяц'}
-        </Button>
+        <div className="mt-3">
+          <KpiApprovalBar
+            approved={approved}
+            approvedByName={approvedByName}
+            saving={saving}
+            saveLabel="Сохранить месяц"
+            onSave={() =>
+              void save(
+                { ...head, teamLeads, certificates },
+                { mode: 'draft', user: { id: user?.id || '', name: user?.name || '' } },
+              )
+            }
+            onApprove={() =>
+              void save(
+                { ...head, teamLeads, certificates },
+                { mode: 'approve', user: { id: user?.id || '', name: user?.name || '' } },
+              )
+            }
+            onUnapprove={() =>
+              void save(
+                { ...head, teamLeads, certificates },
+                { mode: 'unapprove', user: { id: user?.id || '', name: user?.name || '' } },
+              )
+            }
+          />
+        </div>
       </Card>
     </div>
   )

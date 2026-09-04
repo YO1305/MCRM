@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { subscribeToDocument, setDocument } from '@/firebase/firestore'
-import { deleteField } from 'firebase/firestore'
+import { deleteField, serverTimestamp } from 'firebase/firestore'
 import { defaultPayrollInputs, payrollDocId } from '@/constants/kpiPayroll'
 import type { KpiPayrollDoc, KpiPayrollInputs, KpiPayrollRole } from '@/types/kpiPayroll.types'
+
+export type PayrollSaveMode = 'draft' | 'approve' | 'unapprove'
 
 export function useKpiPayroll(role: KpiPayrollRole, month: string, enabled: boolean) {
   const [saved, setSaved] = useState<KpiPayrollDoc | null>(null)
@@ -34,11 +36,17 @@ export function useKpiPayroll(role: KpiPayrollRole, month: string, enabled: bool
   }, [role, month, enabled])
 
   const save = useCallback(
-    async (inputs: KpiPayrollInputs, user: { id: string; name: string }) => {
+    async (
+      inputs: KpiPayrollInputs,
+      user: { id: string; name: string },
+      opts?: { mode?: PayrollSaveMode; approvedHandsTotal?: number },
+    ) => {
       setSaving(true)
       setError('')
+      const mode = opts?.mode || 'draft'
       try {
         const id = payrollDocId(role, month)
+        const approved = mode === 'approve' || (mode !== 'unapprove' && saved?.payrollStatus === 'approved')
         await setDocument('kpi_payroll', id, {
           ...inputs,
           leadOverride: inputs.leadOverride ?? deleteField(),
@@ -46,6 +54,17 @@ export function useKpiPayroll(role: KpiPayrollRole, month: string, enabled: bool
           month,
           savedBy: user.id,
           savedByName: user.name,
+          payrollStatus: approved ? 'approved' : 'draft',
+          approvedAt: mode === 'approve' ? serverTimestamp() : approved ? saved?.approvedAt ?? deleteField() : deleteField(),
+          approvedBy: mode === 'approve' ? user.id : approved ? saved?.approvedBy ?? deleteField() : deleteField(),
+          approvedByName:
+            mode === 'approve' ? user.name : approved ? saved?.approvedByName ?? deleteField() : deleteField(),
+          approvedHandsTotal:
+            mode === 'approve'
+              ? opts?.approvedHandsTotal ?? 0
+              : approved
+                ? saved?.approvedHandsTotal ?? deleteField()
+                : deleteField(),
         })
       } catch {
         setError('Не удалось сохранить расчёт')
@@ -54,7 +73,7 @@ export function useKpiPayroll(role: KpiPayrollRole, month: string, enabled: bool
         setSaving(false)
       }
     },
-    [role, month],
+    [role, month, saved],
   )
 
   const inputs: KpiPayrollInputs = useMemo(() => {
@@ -75,5 +94,7 @@ export function useKpiPayroll(role: KpiPayrollRole, month: string, enabled: bool
     }
   }, [saved, role])
 
-  return { inputs, saved, loading, saving, error, save }
+  const approved = saved?.payrollStatus === 'approved'
+
+  return { inputs, saved, loading, saving, error, save, approved }
 }

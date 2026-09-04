@@ -25,22 +25,31 @@ function logDocId(clientId, month) {
 }
 
 function isQuota(err) {
-  return /RESOURCE_EXHAUSTED|Quota exceeded/i.test(String(err?.message || err || ''))
+  return /RESOURCE_EXHAUSTED|Quota exceeded|8 RESOURCE_EXHAUSTED/i.test(
+    String(err?.message || err || ''),
+  )
 }
 
-async function withQuotaRetry(fn) {
+function busyMessage(action) {
+  return action === 'exclude'
+    ? 'База перегружена. Подождите минуту и нажмите «Убрать из KPI» ещё раз.'
+    : 'База перегружена. Подождите минуту и нажмите «Засчитать» ещё раз.'
+}
+
+async function withQuotaRetry(fn, action) {
   let last
-  for (let i = 0; i < 5; i += 1) {
+  for (let i = 0; i < 4; i += 1) {
     try {
       return await fn()
     } catch (err) {
       last = err
       if (!isQuota(err)) throw err
-      await new Promise((r) => setTimeout(r, 1200 * (i + 1)))
+      await new Promise((r) => setTimeout(r, 800 * (i + 1)))
     }
   }
-  const err = new Error('База перегружена. Подождите минуту и нажмите «Засчитать» ещё раз.')
+  const err = new Error(busyMessage(action))
   err.status = 429
+  err.code = 'QUOTA'
   err.cause = last
   throw err
 }
@@ -63,6 +72,27 @@ async function assertAdmin(req) {
   return decoded.uid
 }
 
+async function collectLogRefs(db, clientId, month, extraLogId) {
+  const refs = new Map()
+  const named = db.collection('kpi_lead_log').doc(logDocId(clientId, month))
+  refs.set(named.id, named)
+  if (extraLogId && extraLogId !== named.id) {
+    refs.set(extraLogId, db.collection('kpi_lead_log').doc(extraLogId))
+  }
+  try {
+    const snap = await db
+      .collection('kpi_lead_log')
+      .where('clientId', '==', clientId)
+      .where('month', '==', month)
+      .limit(20)
+      .get()
+    snap.docs.forEach((doc) => refs.set(doc.id, doc.ref))
+  } catch (err) {
+    if (!isQuota(err)) throw err
+  }
+  return [...refs.values()]
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
@@ -70,13 +100,15 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(204).end()
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
+  let action = ''
   try {
     initAdmin()
     await assertAdmin(req)
     const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body || {}
-    const action = String(body.action || '')
+    action = String(body.action || '')
     const clientId = String(body.clientId || '')
     const month = String(body.month || '')
+    const extraLogId = String(body.logId || '').trim()
     if (!clientId || !/^\d{4}-\d{2}$/.test(month)) {
       return res.status(400).json({ error: 'Нужны clientId и месяц YYYY-MM' })
     }
@@ -86,21 +118,14 @@ export default async function handler(req, res) {
 
     const db = admin.firestore()
     const FieldValue = admin.firestore.FieldValue
-    const logRef = db.collection('kpi_lead_log').doc(logDocId(clientId, month))
     const clientRef = db.collection('clients').doc(clientId)
 
     await withQuotaRetry(async () => {
-      const clientSnap = await clientRef.get()
-      if (!clientSnap.exists) {
-        const err = new Error('Клиент не найден')
-        err.status = 404
-        throw err
-      }
-      const client = { id: clientSnap.id, ...clientSnap.data() }
-
       if (action === 'exclude') {
-        await logRef.delete().catch(() => {})
-        await clientRef.update({
+        const logRefs = await collectLogRefs(db, clientId, month, extraLogId)
+        const batch = db.batch()
+        logRefs.forEach((ref) => batch.delete(ref))
+        batch.update(clientRef, {
           kpiQualified: false,
           kpiQualifiedMonth: month,
           kpiQualificationReason: 'Админ снял лид из KPI вручную',
@@ -109,11 +134,22 @@ export default async function handler(req, res) {
           kpiQualifiedAt: FieldValue.serverTimestamp(),
           updatedAt: FieldValue.serverTimestamp(),
         })
+        await batch.commit()
         return
       }
 
+      const clientSnap = await clientRef.get()
+      if (!clientSnap.exists) {
+        const err = new Error('Клиент не найден')
+        err.status = 404
+        throw err
+      }
+      const client = { id: clientSnap.id, ...clientSnap.data() }
       const cats = leadCategories(client)
-      await logRef.set(
+      const logRef = db.collection('kpi_lead_log').doc(logDocId(clientId, month))
+      const batch = db.batch()
+      batch.set(
+        logRef,
         {
           clientId,
           clientName: client.name || '',
@@ -131,25 +167,28 @@ export default async function handler(req, res) {
         },
         { merge: true },
       )
-      await clientRef.update({
-        kpiQualified: true,
-        kpiQualifiedMonth: month,
-        kpiQualificationReason: 'Админ засчитал лид вручную',
-        kpiManualIncluded: true,
-        kpiManualMonth: month,
-        kpiQualifiedAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-      })
-    })
+      batch.set(
+        clientRef,
+        {
+          kpiQualified: true,
+          kpiQualifiedMonth: month,
+          kpiQualificationReason: 'Админ засчитал лид вручную',
+          kpiManualIncluded: true,
+          kpiManualMonth: month,
+          kpiQualifiedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      )
+      await batch.commit()
+    }, action)
 
     return res.status(200).json({ ok: true, action })
   } catch (err) {
     console.error('kpi-lead-override', err)
-    const quota = isQuota(err)
+    const quota = isQuota(err) || err.code === 'QUOTA' || err.status === 429
     return res.status(err.status || (quota ? 429 : 500)).json({
-      error: quota
-        ? 'База перегружена. Подождите минуту и нажмите «Засчитать» ещё раз.'
-        : err.message || 'Не удалось изменить KPI-лид',
+      error: quota ? busyMessage(action) : err.message || 'Не удалось изменить KPI-лид',
       code: quota ? 'QUOTA' : err.code || 'OVERRIDE_ERROR',
     })
   }

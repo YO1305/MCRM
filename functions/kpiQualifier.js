@@ -70,15 +70,29 @@ async function updateClientKpi(db, clientId, fields) {
 }
 
 async function deleteMonthLog(db, clientId, month, options = {}) {
-  const existing = await findMonthLog(db, clientId, month)
-  if (!existing) return
-  const data = existing.data() || {}
-  const moments = Number(data.significantMoments) || 0
-  if (!options.force) {
-    if (moments >= 900) return
-    if (data.source === 'admin') return
+  const refs = new Map()
+  const named = await db.collection('kpi_lead_log').doc(kpiLogId(clientId, month)).get()
+  if (named.exists) refs.set(named.id, named)
+  try {
+    const snap = await db
+      .collection('kpi_lead_log')
+      .where('clientId', '==', clientId)
+      .where('month', '==', month)
+      .limit(20)
+      .get()
+    snap.docs.forEach((doc) => refs.set(doc.id, doc))
+  } catch {
+    /* named doc is enough */
   }
-  await existing.ref.delete()
+  for (const existing of refs.values()) {
+    const data = existing.data() || {}
+    const moments = Number(data.significantMoments) || 0
+    if (!options.force) {
+      if (moments >= 900) continue
+      if (data.source === 'admin') continue
+    }
+    await existing.ref.delete()
+  }
 }
 
 async function writeKpiLeadLog(db, client, significantMoments, month, activeMonthsCount, source = 'journal_steps') {

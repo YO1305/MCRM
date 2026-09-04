@@ -11,6 +11,7 @@ export async function adminCountKpiLead(opts: {
     action: 'include',
     clientId: opts.client.id,
     month: opts.month,
+    logId: opts.log?.id,
   })
 }
 
@@ -23,5 +24,6 @@ export async function adminUncountKpiLead(opts: {
     action: 'exclude',
     clientId: opts.client.id,
     month: opts.month,
+    logId: opts.log?.id,
   })
 }

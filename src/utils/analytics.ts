@@ -1,12 +1,13 @@
 import type { Client } from '@/types/client.types'
-import type { Contact } from '@/types/contact.types'
 import type { Task } from '@/types/task.types'
 import type { TaskTemplate, TaskRecurrence } from '@/types/taskTemplate.types'
 import type { ClientStage } from '@/constants/clientStages'
 import { allPipelineStages, stageIsClosed } from '@/constants/clientStages'
 import { CLIENT_SOURCES } from '@/constants/clientMeta'
 import { FABRIC_TYPES, GP_TYPES, PRODUCT_KIND_LABELS } from '@/constants/leadProducts'
-import { todayISO } from '@/utils/dates'
+import { getCurrentMonth, todayISO } from '@/utils/dates'
+import { effectiveGroqActivity } from '@/utils/groqLeadActivity'
+import { GROQ_ACTIVITY_LABELS, type GroqActivityLabel } from '@/types/aiActivity.types'
 
 export function formatMoney(n: number): string {
   if (!n) return '0'
@@ -18,24 +19,22 @@ export function formatPct(done: number, total: number): string {
   return `${Math.round((done / total) * 100)}%`
 }
 
-function contactStatusMap(contacts: Contact[]): Map<string, 'active' | 'passive'> {
-  const m = new Map<string, 'active' | 'passive'>()
-  for (const c of contacts) {
-    m.set(c.id, c.status === 'passive' ? 'passive' : 'active')
-  }
-  return m
+export type LeadActivityKind = GroqActivityLabel | 'unlabeled'
+
+export function activityLabelRu(kind: LeadActivityKind): string {
+  if (kind === 'unlabeled') return 'без метки'
+  return GROQ_ACTIVITY_LABELS[kind]
 }
 
-function resolveActivePassive(
+/** Same active/passive/paused as CRM badges, not the contacts book. */
+export function resolveLeadActivity(
   client: Client,
-  byContact: Map<string, 'active' | 'passive'>,
-): 'active' | 'passive' {
-  if (client.contactId && byContact.has(client.contactId)) {
-    return byContact.get(client.contactId)!
-  }
+  month: string = getCurrentMonth(),
+): LeadActivityKind {
+  const { label } = effectiveGroqActivity(client, month)
+  if (label) return label
   if (stageIsClosed(client.stage)) return 'passive'
-  if (client.waitStatus === 'На паузе') return 'passive'
-  return 'active'
+  return 'unlabeled'
 }
 
 export interface CountSum {
@@ -43,22 +42,25 @@ export interface CountSum {
   sum: number
   active: number
   passive: number
+  paused: number
+  unlabeled: number
 }
 
 function emptyCS(): CountSum {
-  return { count: 0, sum: 0, active: 0, passive: 0 }
+  return { count: 0, sum: 0, active: 0, passive: 0, paused: 0, unlabeled: 0 }
 }
 
-function addCS(row: CountSum, amount: number | null | undefined, ap: 'active' | 'passive') {
+function addCS(row: CountSum, amount: number | null | undefined, ap: LeadActivityKind) {
   row.count += 1
   row.sum += Number(amount) || 0
   if (ap === 'active') row.active += 1
-  else row.passive += 1
+  else if (ap === 'passive') row.passive += 1
+  else if (ap === 'paused') row.paused += 1
+  else row.unlabeled += 1
 }
 
-export function buildCrmAnalytics(clients: Client[], contacts: Contact[]) {
-  const byContact = contactStatusMap(contacts)
-
+export function buildCrmAnalytics(clients: Client[], month: string | 'all' = getCurrentMonth()) {
+  const activityMonth = month === 'all' ? getCurrentMonth() : month
   const byStage = new Map<ClientStage, CountSum>()
   const pipeline = allPipelineStages()
   for (const s of pipeline) byStage.set(s.value, emptyCS())
@@ -75,13 +77,27 @@ export function buildCrmAnalytics(clients: Client[], contacts: Contact[]) {
   const byGpType = new Map<string, CountSum>()
   const bySource = new Map<string, CountSum>()
   const byCountry = new Map<string, CountSum>()
+  const byCategory = {
+    fabric: emptyCS(),
+    finished: emptyCS(),
+    europe: emptyCS(),
+  }
 
   let totalSum = 0
   let transferred = 0
   let withAmount = 0
+  let activeTotal = 0
+  let passiveTotal = 0
+  let pausedTotal = 0
+  let unlabeledTotal = 0
 
   for (const c of clients) {
-    const ap = resolveActivePassive(c, byContact)
+    const ap = resolveLeadActivity(c, activityMonth)
+    if (ap === 'active') activeTotal += 1
+    else if (ap === 'passive') passiveTotal += 1
+    else if (ap === 'paused') pausedTotal += 1
+    else unlabeledTotal += 1
+
     const amount = c.dealAmount
     totalSum += Number(amount) || 0
     if (amount != null && Number(amount) > 0) withAmount += 1
@@ -119,6 +135,15 @@ export function buildCrmAnalytics(clients: Client[], contacts: Contact[]) {
     else if (hasG) addCS(byProduct.finished, amount, ap)
     else addCS(byProduct.none, amount, ap)
 
+    const cats = Array.isArray(c.categories) && c.categories.length
+      ? c.categories
+      : c.category
+        ? [c.category]
+        : []
+    if (cats.includes('fabric')) addCS(byCategory.fabric, amount, ap)
+    if (cats.includes('finished')) addCS(byCategory.finished, amount, ap)
+    if (cats.includes('europe')) addCS(byCategory.europe, amount, ap)
+
     for (const ft of c.fabricTypes || []) {
       if (!byFabricType.has(ft)) byFabricType.set(ft, emptyCS())
       addCS(byFabricType.get(ft)!, amount, ap)
@@ -142,8 +167,11 @@ export function buildCrmAnalytics(clients: Client[], contacts: Contact[]) {
     totalSum,
     withAmount,
     transferred,
-    activeTotal: clients.filter((c) => resolveActivePassive(c, byContact) === 'active').length,
-    passiveTotal: clients.filter((c) => resolveActivePassive(c, byContact) === 'passive').length,
+    activeTotal,
+    passiveTotal,
+    pausedTotal,
+    unlabeledTotal,
+    activityMonth,
     stageRows: pipeline.map((s) => ({
       stage: s.value,
       label: s.label,
@@ -156,6 +184,11 @@ export function buildCrmAnalytics(clients: Client[], contacts: Contact[]) {
       { key: 'finished', label: PRODUCT_KIND_LABELS.finished, ...byProduct.finished },
       { key: 'both', label: 'Ткань + ГП', ...byProduct.both },
       { key: 'none', label: 'Не указано', ...byProduct.none },
+    ].filter((r) => r.count > 0),
+    categoryRows: [
+      { key: 'fabric', label: 'Ткань (KPI-полка)', ...byCategory.fabric },
+      { key: 'finished', label: 'ГП (KPI-полка)', ...byCategory.finished },
+      { key: 'europe', label: 'Европа', ...byCategory.europe },
     ].filter((r) => r.count > 0),
     fabricRows: [...byFabricType.entries()]
       .map(([key, v]) => ({ key, label: FABRIC_TYPES[key] || key, ...v }))

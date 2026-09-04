@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Expand, X } from 'lucide-react'
 import { useClients } from '@/hooks/useClients'
-import { useContacts } from '@/hooks/useContacts'
 import { useTasks } from '@/hooks/useTasks'
 import { useTaskTemplates } from '@/hooks/useTaskTemplates'
 import { Card } from '@/components/ui/Card'
@@ -12,10 +11,12 @@ import { TASK_STATUSES, type TaskStatus } from '@/constants/taskStatuses'
 import { STATUS_BADGE } from '@/constants/taskMeta'
 import { getCurrentMonth, todayISO } from '@/utils/dates'
 import {
+  activityLabelRu,
   buildCrmAnalytics,
   buildTasksAnalytics,
   formatMoney,
   formatPct,
+  resolveLeadActivity,
 } from '@/utils/analytics'
 import type { Client } from '@/types/client.types'
 import type { Task } from '@/types/task.types'
@@ -85,28 +86,27 @@ function FullscreenDetail({
 export function Analytics() {
   const [tab, setTab] = useState<Tab>('crm')
   const [taskMonth, setTaskMonth] = useState(getCurrentMonth())
+  const [crmMonth, setCrmMonth] = useState(getCurrentMonth())
 
   const { clients, loading: clientsLoading } = useClients()
-  const { contacts, loading: contactsLoading } = useContacts(true)
   const { tasks, loading: tasksLoading } = useTasks()
   const { templates, loading: tplLoading } = useTaskTemplates()
 
-  const crm = useMemo(() => buildCrmAnalytics(clients, contacts), [clients, contacts])
+  const crm = useMemo(() => buildCrmAnalytics(clients, crmMonth), [clients, crmMonth])
   const tasksStats = useMemo(
     () => buildTasksAnalytics(tasks, templates, taskMonth),
     [tasks, templates, taskMonth],
   )
 
-  const loading =
-    tab === 'crm' ? clientsLoading || contactsLoading : tasksLoading || tplLoading
+  const loading = tab === 'crm' ? clientsLoading : tasksLoading || tplLoading
 
   return (
     <div className="space-y-4">
       <div>
         <h1 className="text-2xl font-bold text-text">Аналитика</h1>
         <p className="mt-1 text-sm text-muted">
-          CRM · задачи. Нажмите «Во весь экран» у отчёта или строку сотрудника — откроется
-          подробная детализация.
+          CRM: актив / пассив / пауза — как бейджи в карточках лидов (журнал + перенос с прошлого
+          месяца). Не книга контактов. Выберите месяц. «Во весь экран» — полный список.
         </p>
       </div>
 
@@ -132,7 +132,13 @@ export function Analytics() {
       {loading ? (
         <p className="text-sm text-muted">Загрузка данных...</p>
       ) : tab === 'crm' ? (
-        <CrmSection crm={crm} clients={clients} />
+        <CrmSection
+          crm={crm}
+          clients={clients}
+          month={crmMonth}
+          onMonthChange={setCrmMonth}
+          months={monthOptions()}
+        />
       ) : (
         <TasksSection
           stats={tasksStats}
@@ -270,6 +276,8 @@ function FunnelChart({
     sum: number
     active: number
     passive: number
+    paused: number
+    unlabeled: number
   }[]
 }) {
   const archiveValues = new Set(
@@ -296,7 +304,8 @@ function FunnelChart({
                   {i + 1}. {r.label}
                 </span>
                 <span className="text-muted">
-                  {r.count} · актив {r.active} · пассив {r.passive} · {formatMoney(r.sum)}
+                  {r.count} · актив {r.active} · пассив {r.passive} · пауза {r.paused}
+                  {r.unlabeled ? ` · без метки ${r.unlabeled}` : ''} · {formatMoney(r.sum)}
                 </span>
               </div>
               <div className="flex justify-center">
@@ -327,9 +336,11 @@ function FunnelChart({
 function ClientsDetailList({
   title,
   clients,
+  month,
 }: {
   title: string
   clients: Client[]
+  month: string
 }) {
   if (!clients.length) {
     return (
@@ -345,10 +356,11 @@ function ClientsDetailList({
         <p className="text-xs text-muted">{clients.length} записей</p>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[720px] text-left text-sm">
+        <table className="w-full min-w-[860px] text-left text-sm">
           <thead>
             <tr className="border-b border-gray-100 bg-background text-xs uppercase text-muted">
               <th className="px-4 py-2 font-medium">Клиент</th>
+              <th className="px-4 py-2 font-medium">Активность</th>
               <th className="px-4 py-2 font-medium">Этап</th>
               <th className="px-4 py-2 font-medium">Менеджер лидов</th>
               <th className="px-4 py-2 font-medium">Продажи</th>
@@ -357,11 +369,31 @@ function ClientsDetailList({
             </tr>
           </thead>
           <tbody>
-            {clients.map((c) => (
+            {clients.map((c) => {
+              const ap = resolveLeadActivity(c, month)
+              return (
               <tr key={c.id} className="border-b border-gray-50">
                 <td className="px-4 py-2">
                   <p className="font-medium text-text">{c.name}</p>
                   <p className="text-xs text-muted">{c.phone}</p>
+                </td>
+                <td className="px-4 py-2">
+                  <span
+                    className={
+                      ap === 'active'
+                        ? 'font-medium text-emerald-700'
+                        : ap === 'paused'
+                          ? 'font-medium text-slate-600'
+                          : ap === 'passive'
+                            ? 'font-medium text-amber-700'
+                            : 'text-muted'
+                    }
+                  >
+                    {activityLabelRu(ap)}
+                  </span>
+                  {c.activityReason ? (
+                    <p className="mt-0.5 line-clamp-2 text-xs text-muted">{c.activityReason}</p>
+                  ) : null}
                 </td>
                 <td className="px-4 py-2 text-muted">
                   {stageLabel(c.stage)}
@@ -375,7 +407,8 @@ function ClientsDetailList({
                 </td>
                 <td className="px-4 py-2 text-muted">{formatMoney(Number(c.dealAmount) || 0)}</td>
               </tr>
-            ))}
+              )
+            })}
           </tbody>
         </table>
       </div>
@@ -386,21 +419,55 @@ function ClientsDetailList({
 function CrmSection({
   crm,
   clients,
+  month,
+  onMonthChange,
+  months,
 }: {
   crm: ReturnType<typeof buildCrmAnalytics>
   clients: Client[]
+  month: string
+  onMonthChange: (v: string) => void
+  months: { value: string; label: string }[]
 }) {
   const [funnelFull, setFunnelFull] = useState(false)
+  const activityMonth = crm.activityMonth
+  const apColumns = ['Этап', 'Лидов', 'Актив', 'Пассив', 'Пауза', 'Без метки', 'Сумма']
+  const apRow = (label: string, r: { count: number; active: number; passive: number; paused: number; unlabeled: number; sum: number }) => [
+    label,
+    r.count,
+    r.active,
+    r.passive,
+    r.paused,
+    r.unlabeled,
+    formatMoney(r.sum),
+  ]
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
+      <div className="flex flex-col gap-1.5">
+        <label className="text-sm font-medium text-text">Месяц активности</label>
+        <select
+          value={month}
+          onChange={(e) => onMonthChange(e.target.value)}
+          className="max-w-xs rounded-lg border border-gray-200 bg-surface px-3 py-2.5 text-sm"
+        >
+          {months.map((m) => (
+            <option key={m.value} value={m.value}>
+              {m.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-8">
         <StatCard label="Всего лидов" value={crm.total} />
-        <StatCard label="Актив" value={crm.activeTotal} />
-        <StatCard label="Пассив" value={crm.passiveTotal} />
-        <StatCard label="Передано в продажи" value={crm.transferred} />
+        <StatCard label="Актив" value={crm.activeTotal} hint="работа в CRM / перенос" />
+        <StatCard label="Пассив" value={crm.passiveTotal} hint="тишина в журнале" />
+        <StatCard label="На паузе" value={crm.pausedTotal} />
+        <StatCard label="Без метки" value={crm.unlabeledTotal} hint="анализ ещё не ставил" />
+        <StatCard label="В продажи" value={crm.transferred} />
         <StatCard label="С суммой" value={crm.withAmount} />
-        <StatCard label="Сумма сделок" value={formatMoney(crm.totalSum)} hint="по полю «сумма»" />
+        <StatCard label="Сумма сделок" value={formatMoney(crm.totalSum)} hint="поле «сумма»" />
       </div>
 
       <div className="relative">
@@ -416,54 +483,37 @@ function CrmSection({
       {funnelFull && (
         <FullscreenDetail
           title="Воронка CRM"
-          subtitle="Этапы · количество · суммы · список лидов"
+          subtitle="Этапы · актив / пассив / пауза · список лидов"
           onClose={() => setFunnelFull(false)}
         >
           <div className="mx-auto max-w-6xl space-y-6">
             <FunnelChart stageRows={crm.stageRows} />
             <ReportTable
-              columns={['Этап', 'Лидов', 'Актив', 'Пассив', 'Сумма']}
-              rows={crm.stageRows.map((r) => [
-                r.label,
-                r.count,
-                r.active,
-                r.passive,
-                formatMoney(r.sum),
-              ])}
+              columns={apColumns}
+              rows={crm.stageRows.map((r) => apRow(r.label, r))}
             />
-            <ClientsDetailList title="Все лиды воронки" clients={clients} />
+            <ClientsDetailList title="Все лиды воронки" clients={clients} month={activityMonth} />
           </div>
         </FullscreenDetail>
       )}
 
       <DataTable
         title="По этапам воронки"
-        hint="Количество · актив/пассив · сумма"
-        columns={['Этап', 'Лидов', 'Актив', 'Пассив', 'Сумма']}
-        rows={crm.stageRows.map((r) => [
-          r.label,
-          r.count,
-          r.active,
-          r.passive,
-          formatMoney(r.sum),
-        ])}
-        detailExtra={<ClientsDetailList title="Все лиды" clients={clients} />}
+        hint="Актив = как в карточке CRM за выбранный месяц"
+        columns={apColumns}
+        rows={crm.stageRows.map((r) => apRow(r.label, r))}
+        detailExtra={<ClientsDetailList title="Все лиды" clients={clients} month={activityMonth} />}
       />
 
       <DataTable
         title="По менеджерам лидов"
-        hint="У кого сколько лидов в работе"
-        columns={['Менеджер', 'Лидов', 'Актив', 'Пассив', 'Сумма']}
-        rows={crm.leadRows.map((r) => [
-          r.name,
-          r.count,
-          r.active,
-          r.passive,
-          formatMoney(r.sum),
-        ])}
+        hint="У кого сколько лидов и какая активность"
+        columns={['Менеджер', 'Лидов', 'Актив', 'Пассив', 'Пауза', 'Без метки', 'Сумма']}
+        rows={crm.leadRows.map((r) => apRow(r.name, r))}
         detailExtra={
           <ClientsDetailList
             title="Лиды по менеджерам"
+            month={activityMonth}
             clients={[...clients].sort((a, b) =>
               (a.assignedToName || '').localeCompare(b.assignedToName || '', 'ru'),
             )}
@@ -474,17 +524,12 @@ function CrmSection({
       <DataTable
         title="Передано менеджерам продаж"
         hint="Кому переданы лиды из CRM"
-        columns={['Менеджер продаж', 'Лидов', 'Актив', 'Пассив', 'Сумма']}
-        rows={crm.salesRows.map((r) => [
-          r.name,
-          r.count,
-          r.active,
-          r.passive,
-          formatMoney(r.sum),
-        ])}
+        columns={['Менеджер продаж', 'Лидов', 'Актив', 'Пассив', 'Пауза', 'Без метки', 'Сумма']}
+        rows={crm.salesRows.map((r) => apRow(r.name, r))}
         detailExtra={
           <ClientsDetailList
             title="Переданные в продажи"
+            month={activityMonth}
             clients={clients.filter((c) => c.salesManagerId || c.salesManagerName)}
           />
         }
@@ -492,36 +537,44 @@ function CrmSection({
 
       <DataTable
         title="По продукции"
-        columns={['Тип', 'Лидов', 'Актив', 'Пассив', 'Сумма']}
-        rows={crm.productRows.map((r) => [
-          r.label,
-          r.count,
-          r.active,
-          r.passive,
-          formatMoney(r.sum),
-        ])}
-        detailExtra={<ClientsDetailList title="Все лиды с продукцией" clients={clients} />}
+        columns={['Тип', 'Лидов', 'Актив', 'Пассив', 'Пауза', 'Без метки', 'Сумма']}
+        rows={crm.productRows.map((r) => apRow(r.label, r))}
+        detailExtra={
+          <ClientsDetailList title="Все лиды с продукцией" clients={clients} month={activityMonth} />
+        }
       />
+
+      {crm.categoryRows.length > 0 && (
+        <DataTable
+          title="Полки KPI (ткань / ГП / Европа)"
+          hint="Один лид может быть на двух полках"
+          columns={['Полка', 'Лидов', 'Актив', 'Пассив', 'Пауза', 'Без метки', 'Сумма']}
+          rows={crm.categoryRows.map((r) => apRow(r.label, r))}
+          detailExtra={<ClientsDetailList title="Все лиды" clients={clients} month={activityMonth} />}
+        />
+      )}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <DataTable
           title="Ткани — детализация"
-          columns={['Вид ткани', 'Лидов', 'Сумма']}
-          rows={crm.fabricRows.map((r) => [r.label, r.count, formatMoney(r.sum)])}
+          columns={['Вид ткани', 'Лидов', 'Актив', 'Пассив', 'Сумма']}
+          rows={crm.fabricRows.map((r) => [r.label, r.count, r.active, r.passive, formatMoney(r.sum)])}
           detailExtra={
             <ClientsDetailList
               title="Лиды с тканью"
+              month={activityMonth}
               clients={clients.filter((c) => (c.products || []).includes('fabric'))}
             />
           }
         />
         <DataTable
           title="ГП — детализация"
-          columns={['Вид ГП', 'Лидов', 'Сумма']}
-          rows={crm.gpRows.map((r) => [r.label, r.count, formatMoney(r.sum)])}
+          columns={['Вид ГП', 'Лидов', 'Актив', 'Пассив', 'Сумма']}
+          rows={crm.gpRows.map((r) => [r.label, r.count, r.active, r.passive, formatMoney(r.sum)])}
           detailExtra={
             <ClientsDetailList
               title="Лиды с ГП"
+              month={activityMonth}
               clients={clients.filter((c) => (c.products || []).includes('finished'))}
             />
           }
@@ -531,15 +584,15 @@ function CrmSection({
       <div className="grid gap-4 lg:grid-cols-2">
         <DataTable
           title="По источникам"
-          columns={['Источник', 'Лидов', 'Сумма']}
-          rows={crm.sourceRows.map((r) => [r.label, r.count, formatMoney(r.sum)])}
-          detailExtra={<ClientsDetailList title="Все лиды" clients={clients} />}
+          columns={['Источник', 'Лидов', 'Актив', 'Пассив', 'Сумма']}
+          rows={crm.sourceRows.map((r) => [r.label, r.count, r.active, r.passive, formatMoney(r.sum)])}
+          detailExtra={<ClientsDetailList title="Все лиды" clients={clients} month={activityMonth} />}
         />
         <DataTable
           title="По странам"
-          columns={['Страна', 'Лидов', 'Сумма']}
-          rows={crm.countryRows.map((r) => [r.label, r.count, formatMoney(r.sum)])}
-          detailExtra={<ClientsDetailList title="Все лиды" clients={clients} />}
+          columns={['Страна', 'Лидов', 'Актив', 'Пассив', 'Сумма']}
+          rows={crm.countryRows.map((r) => [r.label, r.count, r.active, r.passive, formatMoney(r.sum)])}
+          detailExtra={<ClientsDetailList title="Все лиды" clients={clients} month={activityMonth} />}
         />
       </div>
     </div>

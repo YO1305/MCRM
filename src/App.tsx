@@ -33,6 +33,9 @@ const Catalogue = lazy(() => import('@/pages/Catalogue').then((m) => ({ default:
 const PublicCatalogue = lazy(() =>
   import('@/pages/PublicCatalogue').then((m) => ({ default: m.PublicCatalogue })),
 )
+const PublicAnalytics = lazy(() =>
+  import('@/pages/PublicAnalytics').then((m) => ({ default: m.PublicAnalytics })),
+)
 
 function PageFallback() {
   return (
@@ -50,6 +53,7 @@ export default function App() {
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/c/:slug" element={<PublicCatalogue />} />
+            <Route path="/a/:id" element={<PublicAnalytics />} />
 
             <Route element={<PrivateRoute />}>
               <Route element={<Layout />}>

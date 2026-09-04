@@ -361,5 +361,9 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow write: if isAdmin();
     }
+
+    match /analytics_shares/{id} {
+      allow read, write: if false;
+    }
   }
 }

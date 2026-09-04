@@ -21,6 +21,12 @@ import {
 import type { Client } from '@/types/client.types'
 import type { Task } from '@/types/task.types'
 import type { EmployeeTaskStats } from '@/utils/analytics'
+import { CopyAnalyticsLinkButton } from '@/components/analytics/CopyAnalyticsLinkButton'
+import { useAuth } from '@/hooks/useAuth'
+import {
+  buildCrmSharePayload,
+  buildTasksSharePayload,
+} from '@/utils/analyticsSharePayload'
 
 type Tab = 'crm' | 'tasks'
 
@@ -43,11 +49,13 @@ function FullscreenDetail({
   title,
   subtitle,
   onClose,
+  share,
   children,
 }: {
   title: string
   subtitle?: string
   onClose: () => void
+  share?: ReactNode
   children: ReactNode
 }) {
   useEffect(() => {
@@ -73,10 +81,13 @@ function FullscreenDetail({
           <h2 className="truncate text-xl font-bold text-text">{title}</h2>
           {subtitle && <p className="mt-0.5 text-sm text-muted">{subtitle}</p>}
         </div>
-        <Button type="button" variant="secondary" size="sm" onClick={onClose}>
-          <X className="h-4 w-4" />
-          Закрыть
-        </Button>
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+          {share}
+          <Button type="button" variant="secondary" size="sm" onClick={onClose}>
+            <X className="h-4 w-4" />
+            Закрыть
+          </Button>
+        </div>
       </div>
       <div className="flex-1 overflow-y-auto p-4 lg:p-6">{children}</div>
     </div>
@@ -84,6 +95,7 @@ function FullscreenDetail({
 }
 
 export function Analytics() {
+  const { user } = useAuth()
   const [tab, setTab] = useState<Tab>('crm')
   const [taskMonth, setTaskMonth] = useState(getCurrentMonth())
   const [crmMonth, setCrmMonth] = useState(getCurrentMonth())
@@ -99,15 +111,28 @@ export function Analytics() {
   )
 
   const loading = tab === 'crm' ? clientsLoading : tasksLoading || tplLoading
+  const author = user?.name || 'Bahmal'
+  const shareBtn = (
+    <CopyAnalyticsLinkButton
+      buildPayload={() =>
+        tab === 'crm'
+          ? buildCrmSharePayload(clients, crmMonth, author)
+          : buildTasksSharePayload(tasksStats, taskMonth, author)
+      }
+    />
+  )
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold text-text">Аналитика</h1>
-        <p className="mt-1 text-sm text-muted">
-          CRM: актив / пассив / пауза — как бейджи в карточках лидов (журнал + перенос с прошлого
-          месяца). Не книга контактов. Выберите месяц. «Во весь экран» — полный список.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-text">Аналитика</h1>
+          <p className="mt-1 text-sm text-muted">
+            CRM: актив / пассив / пауза — как бейджи в карточках. «Скопировать ссылку» — одна страница
+            без входа, можно отправить в WhatsApp.
+          </p>
+        </div>
+        {!loading ? shareBtn : null}
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -138,6 +163,7 @@ export function Analytics() {
           month={crmMonth}
           onMonthChange={setCrmMonth}
           months={monthOptions()}
+          share={shareBtn}
         />
       ) : (
         <TasksSection
@@ -146,6 +172,7 @@ export function Analytics() {
           month={taskMonth}
           onMonthChange={setTaskMonth}
           months={monthOptions()}
+          share={shareBtn}
         />
       )}
     </div>
@@ -220,6 +247,7 @@ function DataTable({
   rows,
   detailTitle,
   detailExtra,
+  share,
 }: {
   title: string
   hint?: string
@@ -227,6 +255,7 @@ function DataTable({
   rows: (string | number)[][]
   detailTitle?: string
   detailExtra?: ReactNode
+  share?: ReactNode
 }) {
   const [full, setFull] = useState(false)
 
@@ -253,6 +282,7 @@ function DataTable({
           title={detailTitle || title}
           subtitle={hint}
           onClose={() => setFull(false)}
+          share={share}
         >
           <div className="mx-auto max-w-6xl space-y-6">
             <Card className="overflow-hidden !p-0">
@@ -422,12 +452,14 @@ function CrmSection({
   month,
   onMonthChange,
   months,
+  share,
 }: {
   crm: ReturnType<typeof buildCrmAnalytics>
   clients: Client[]
   month: string
   onMonthChange: (v: string) => void
   months: { value: string; label: string }[]
+  share?: ReactNode
 }) {
   const [funnelFull, setFunnelFull] = useState(false)
   const activityMonth = crm.activityMonth
@@ -485,6 +517,7 @@ function CrmSection({
           title="Воронка CRM"
           subtitle="Этапы · актив / пассив / пауза · список лидов"
           onClose={() => setFunnelFull(false)}
+          share={share}
         >
           <div className="mx-auto max-w-6xl space-y-6">
             <FunnelChart stageRows={crm.stageRows} />
@@ -498,6 +531,7 @@ function CrmSection({
       )}
 
       <DataTable
+        share={share}
         title="По этапам воронки"
         hint="Актив = как в карточке CRM за выбранный месяц"
         columns={apColumns}
@@ -506,6 +540,7 @@ function CrmSection({
       />
 
       <DataTable
+        share={share}
         title="По менеджерам лидов"
         hint="У кого сколько лидов и какая активность"
         columns={['Менеджер', 'Лидов', 'Актив', 'Пассив', 'Пауза', 'Без метки', 'Сумма']}
@@ -522,6 +557,7 @@ function CrmSection({
       />
 
       <DataTable
+        share={share}
         title="Передано менеджерам продаж"
         hint="Кому переданы лиды из CRM"
         columns={['Менеджер продаж', 'Лидов', 'Актив', 'Пассив', 'Пауза', 'Без метки', 'Сумма']}
@@ -536,6 +572,7 @@ function CrmSection({
       />
 
       <DataTable
+        share={share}
         title="По продукции"
         columns={['Тип', 'Лидов', 'Актив', 'Пассив', 'Пауза', 'Без метки', 'Сумма']}
         rows={crm.productRows.map((r) => apRow(r.label, r))}
@@ -546,6 +583,7 @@ function CrmSection({
 
       {crm.categoryRows.length > 0 && (
         <DataTable
+          share={share}
           title="Полки KPI (ткань / ГП / Европа)"
           hint="Один лид может быть на двух полках"
           columns={['Полка', 'Лидов', 'Актив', 'Пассив', 'Пауза', 'Без метки', 'Сумма']}
@@ -556,6 +594,7 @@ function CrmSection({
 
       <div className="grid gap-4 lg:grid-cols-2">
         <DataTable
+          share={share}
           title="Ткани — детализация"
           columns={['Вид ткани', 'Лидов', 'Актив', 'Пассив', 'Сумма']}
           rows={crm.fabricRows.map((r) => [r.label, r.count, r.active, r.passive, formatMoney(r.sum)])}
@@ -568,6 +607,7 @@ function CrmSection({
           }
         />
         <DataTable
+          share={share}
           title="ГП — детализация"
           columns={['Вид ГП', 'Лидов', 'Актив', 'Пассив', 'Сумма']}
           rows={crm.gpRows.map((r) => [r.label, r.count, r.active, r.passive, formatMoney(r.sum)])}
@@ -583,12 +623,14 @@ function CrmSection({
 
       <div className="grid gap-4 lg:grid-cols-2">
         <DataTable
+          share={share}
           title="По источникам"
           columns={['Источник', 'Лидов', 'Актив', 'Пассив', 'Сумма']}
           rows={crm.sourceRows.map((r) => [r.label, r.count, r.active, r.passive, formatMoney(r.sum)])}
           detailExtra={<ClientsDetailList title="Все лиды" clients={clients} month={activityMonth} />}
         />
         <DataTable
+          share={share}
           title="По странам"
           columns={['Страна', 'Лидов', 'Актив', 'Пассив', 'Сумма']}
           rows={crm.countryRows.map((r) => [r.label, r.count, r.active, r.passive, formatMoney(r.sum)])}
@@ -613,12 +655,14 @@ function TasksSection({
   month,
   onMonthChange,
   months,
+  share,
 }: {
   stats: ReturnType<typeof buildTasksAnalytics>
   tasks: Task[]
   month: string
   onMonthChange: (v: string) => void
   months: { value: string; label: string }[]
+  share?: ReactNode
 }) {
   const [detail, setDetail] = useState<EmployeeTaskStats | null>(null)
   const [overviewFull, setOverviewFull] = useState(false)
@@ -742,6 +786,7 @@ function TasksSection({
           title="Задачи по сотрудникам"
           subtitle="Сводка за выбранный период"
           onClose={() => setOverviewFull(false)}
+          share={share}
         >
           <div className="mx-auto max-w-6xl space-y-4">
             <ReportTable
@@ -770,6 +815,7 @@ function TasksSection({
           title={detail.name}
           subtitle={`Задачи · сделано ${detail.done}/${detail.total} (${formatPct(detail.done, detail.total)}) · просрочено ${detail.overdue}`}
           onClose={() => setDetail(null)}
+          share={share}
         >
           <div className="mx-auto max-w-6xl space-y-4">
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">

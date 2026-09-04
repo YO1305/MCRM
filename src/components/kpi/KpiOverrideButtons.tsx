@@ -4,6 +4,14 @@ import type { Client } from '@/types/client.types'
 import type { KpiLeadLog } from '@/types/kpiLead.types'
 import { adminCountKpiLead, adminUncountKpiLead } from '@/utils/kpiLeadOverride'
 
+function isBusyError(err: unknown) {
+  const e = err as Error & { code?: string }
+  const text = `${e?.message || ''} ${e?.code || ''}`
+  return /RESOURCE_EXHAUSTED|Quota|перегруж|занят|QUOTA|http\/429|http\/504|http\/502|http\/503|504|502|503/i.test(
+    text,
+  )
+}
+
 export function KpiOverrideButtons({
   client,
   month,
@@ -19,27 +27,31 @@ export function KpiOverrideButtons({
 }) {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
+  const tries = 5
 
-  async function run(fn: () => Promise<void>) {
+  async function run(kind: 'include' | 'exclude') {
     setBusy(true)
     setErr('')
     let last = ''
-    for (let i = 0; i < 4; i += 1) {
+    for (let i = 0; i < tries; i += 1) {
       try {
-        await fn()
+        if (kind === 'exclude') await adminUncountKpiLead({ client, month, log })
+        else await adminCountKpiLead({ client, month, log })
         onDone?.()
         setBusy(false)
         return
       } catch (e) {
         last = e instanceof Error ? e.message : 'Не удалось сохранить'
-        if (!/RESOURCE_EXHAUSTED|Quota|перегруж/i.test(last) || i === 3) break
-        setErr('База занята, пробую ещё раз…')
-        await new Promise((r) => setTimeout(r, 1500 * (i + 1)))
+        if (!isBusyError(e) || i === tries - 1) break
+        setErr(`База занята, попытка ${i + 2} из ${tries}…`)
+        await new Promise((r) => setTimeout(r, 2500 * (i + 1)))
       }
     }
     setErr(
-      /RESOURCE_EXHAUSTED|Quota|перегруж/i.test(last)
-        ? 'База перегружена. Подождите минуту и нажмите «Засчитать» ещё раз.'
+      isBusyError({ message: last, code: '' })
+        ? kind === 'exclude'
+          ? 'База перегружена. Подождите минуту и нажмите «Убрать из KPI» ещё раз.'
+          : 'База перегружена. Подождите минуту и нажмите «Засчитать» ещё раз.'
         : last,
     )
     setBusy(false)
@@ -53,9 +65,9 @@ export function KpiOverrideButtons({
           size="sm"
           variant="danger"
           disabled={busy}
-          onClick={() => run(() => adminUncountKpiLead({ client, month, log }))}
+          onClick={() => run('exclude')}
         >
-          {busy ? '…' : 'Убрать из KPI'}
+          {busy ? 'Снимаю…' : 'Убрать из KPI'}
         </Button>
       ) : (
         <Button
@@ -63,9 +75,9 @@ export function KpiOverrideButtons({
           size="sm"
           variant="secondary"
           disabled={busy}
-          onClick={() => run(() => adminCountKpiLead({ client, month, log }))}
+          onClick={() => run('include')}
         >
-          {busy ? '…' : 'Засчитать'}
+          {busy ? 'Засчитываю…' : 'Засчитать'}
         </Button>
       )}
       {err ? <p className="max-w-[14rem] text-right text-xs text-rose-600">{err}</p> : null}

@@ -6,6 +6,9 @@
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],
   "functions": {
+    "api/kpi-lead-override.js": {
+      "maxDuration": 30
+    },
     "api/ai-lead-analysis.js": {
       "maxDuration": 60
     },

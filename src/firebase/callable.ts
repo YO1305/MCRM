@@ -233,6 +233,7 @@ export async function overrideKpiLead(input: {
   action: 'include' | 'exclude'
   clientId: string
   month: string
+  logId?: string
 }): Promise<{ ok: boolean }> {
   return adminApi('/api/kpi-lead-override', input)
 }

@@ -29,6 +29,7 @@ import {
   suggestDealsForMonth,
 } from '@/constants/kpiPayroll'
 import { groqActivityIsCurrent } from '@/utils/groqLeadActivity'
+import { exportKpiLeadsExcel } from '@/utils/exportKpiLeadsExcel'
 import { getPayrollMonth } from '@/utils/dates'
 import type { DealBandId, KpiPayrollInputs, KpiPayrollRole } from '@/types/kpiPayroll.types'
 import type { LeadCategory } from '@/types/kpiLead.types'
@@ -166,6 +167,8 @@ function KpiPayrollPage({
   )
   const [draft, setDraft] = useState<KpiPayrollInputs>(savedInputs)
   const [savedOk, setSavedOk] = useState('')
+  const [exporting, setExporting] = useState(false)
+  const [exportErr, setExportErr] = useState('')
   const [tab, setTab] = useState<'pay' | 'guide'>('pay')
   const { leads: allLeads } = useKpiLeads('all', month)
 
@@ -481,11 +484,40 @@ function KpiPayrollPage({
       </Card>
 
       <Card className="space-y-3">
-        <h2 className="text-base font-semibold text-text">Засчитанные KPI-лиды</h2>
-        <p className="text-xs text-muted">
-          Почему засчитан: шаги в Истории + категории (ткань / ГП / Европа). Админ может убрать лид
-          из факта кнопкой «Убрать из KPI».
-        </p>
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <h2 className="text-base font-semibold text-text">Засчитанные KPI-лиды</h2>
+            <p className="text-xs text-muted">
+              Почему засчитан: шаги в Истории + категории (ткань / ГП / Европа). Админ может убрать
+              лид из факта кнопкой «Убрать из KPI». Excel — имя, компания, этап, что сделано,
+              комментарии и почему проходит.
+            </p>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            disabled={exporting || leadsLoading || leads.length === 0}
+            onClick={() => {
+              setExportErr('')
+              setExporting(true)
+              void exportKpiLeadsExcel({
+                month,
+                monthLabel: formatMonthLabel(month),
+                managerName: manager?.name || tpl.shortName,
+                leads,
+                clients,
+              })
+                .catch((e) => {
+                  setExportErr(e instanceof Error ? e.message : 'Не удалось скачать Excel')
+                })
+                .finally(() => setExporting(false))
+            }}
+          >
+            {exporting ? 'Готовлю Excel…' : 'Скачать Excel'}
+          </Button>
+        </div>
+        {exportErr ? <p className="text-xs text-danger">{exportErr}</p> : null}
         {leadsLoading ? (
           <p className="text-sm text-muted">Загрузка журнала…</p>
         ) : leads.length === 0 ? (

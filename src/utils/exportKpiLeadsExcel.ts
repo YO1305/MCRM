@@ -9,6 +9,7 @@ import {
   evaluateKpiLead,
   historyForKpiClock,
 } from '@/utils/kpiLeadSteps'
+import { resolveActiveMonthsForMonth } from '@/utils/kpiLeadExplain'
 
 function leadCats(lead: KpiLeadLog, client?: Client | null): string {
   const raw: LeadCategory[] =
@@ -125,6 +126,7 @@ function narrateComment(opts: {
   lead: KpiLeadLog
   month: string
   work: string
+  workMonth: string
   score: ReturnType<typeof evaluateKpiLead>
 }): string {
   const { client, lead, month, work, score } = opts
@@ -132,6 +134,7 @@ function narrateComment(opts: {
   const bits: string[] = []
 
   bits.push(`Клиент сейчас на этапе «${stage}».`)
+  if (opts.workMonth) bits.push(`Это ${opts.workMonth}.`)
   if (client?.company) bits.push(`Компания ${client.company}.`)
 
   if (lead.significantMoments != null && lead.significantMoments >= 900) {
@@ -166,6 +169,11 @@ async function loadHistory(clientId: string): Promise<ClientHistoryEntry[]> {
   return sortHistory(rows)
 }
 
+function workMonthLabel(n: number): string {
+  const k = Math.max(1, Math.round(n) || 1)
+  return `${k}-й месяц работы`
+}
+
 function clip(text: string, max = 30000): string {
   if (text.length <= max) return text
   return `${text.slice(0, max - 20)}…`
@@ -196,13 +204,25 @@ export async function exportKpiLeadsExcel(opts: {
         return cls.kpiCounted || cls.countsAsWork
       })
       const work = narrateWork(useful.length ? useful : monthLines)
-      const comment = narrateComment({ client, lead, month: opts.month, work, score })
+      const monthsN = client
+        ? resolveActiveMonthsForMonth(client, opts.month)
+        : Number(lead.activeMonthsCount) || 1
+      const workMonth = workMonthLabel(monthsN)
+      const comment = narrateComment({
+        client,
+        lead,
+        month: opts.month,
+        work,
+        workMonth,
+        score,
+      })
 
       return {
         '№': index + 1,
         Клиент: lead.clientName || client?.name || '—',
         Компания: client?.company || '—',
         Этап: stageLabel(client?.stage || lead.stage),
+        'Месяц работы': workMonth,
         Полка: leadCats(lead, client),
         Менеджер: lead.assignedToName || client?.assignedToName || opts.managerName,
         'Что сделано по клиенту': clip(work),
@@ -217,6 +237,7 @@ export async function exportKpiLeadsExcel(opts: {
     { wch: 28 },
     { wch: 24 },
     { wch: 22 },
+    { wch: 18 },
     { wch: 14 },
     { wch: 20 },
     { wch: 62 },

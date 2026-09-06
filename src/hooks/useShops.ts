@@ -7,11 +7,12 @@ import {
   removeDocument,
   setDocument,
   subscribeToCollection,
+  subscribeToDocument,
   updateDocument,
 } from '@/firebase/firestore'
 import { useAuth } from '@/hooks/useAuth'
-import type { Shop, ShopInput, ShopSaleLine, ShopSalesDay } from '@/types/shop.types'
-import { salesDayId, totalsOf } from '@/utils/shopSales'
+import type { Shop, ShopInput, ShopSaleLine, ShopSalesDay, ShopStock, ShopStockLine } from '@/types/shop.types'
+import { salesDayId, stockTotals, totalsOf } from '@/utils/shopSales'
 
 function normalizeLocationUrl(raw: string): string {
   const t = raw.trim()
@@ -85,6 +86,79 @@ export function useShopSales(shopId: string | undefined) {
   return { days, loading, upsertDay, deleteDay }
 }
 
+export function useAllShopSales() {
+  const [days, setDays] = useState<ShopSalesDay[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    return subscribeToCollection<ShopSalesDay>(
+      'shop_sales_days',
+      [],
+      (data) => {
+        setDays(data)
+        setLoading(false)
+      },
+      () => {
+        setDays([])
+        setLoading(false)
+      },
+    )
+  }, [])
+
+  return { days, loading }
+}
+
+export function useShopStock(shopId: string | undefined) {
+  const { user } = useAuth()
+  const [stock, setStock] = useState<ShopStock | null>(null)
+  const [loading, setLoading] = useState(!!shopId)
+
+  useEffect(() => {
+    if (!shopId) {
+      setStock(null)
+      setLoading(false)
+      return
+    }
+    setLoading(true)
+    return subscribeToDocument<ShopStock>(
+      'shop_stock',
+      shopId,
+      (data) => {
+        setStock(data)
+        setLoading(false)
+      },
+      () => {
+        setStock(null)
+        setLoading(false)
+      },
+    )
+  }, [shopId])
+
+  const saveStock = useCallback(
+    async (input: { lines: ShopStockLine[]; fileName: string }) => {
+      if (!shopId || !user) throw new Error('Нужно войти')
+      if (!input.lines.length) throw new Error('В файле нет остатков')
+      const totals = stockTotals(input.lines)
+      const existing = await getDocument<ShopStock>('shop_stock', shopId)
+      await setDocument('shop_stock', shopId, {
+        shopId,
+        lines: input.lines,
+        qty: totals.qty,
+        cost: totals.cost,
+        saleValue: totals.saleValue,
+        margin: totals.margin,
+        uploadedBy: user.id,
+        uploadedByName: user.name,
+        fileName: input.fileName,
+        createdAt: existing?.createdAt ?? Date.now(),
+      })
+    },
+    [shopId, user],
+  )
+
+  return { stock, loading, saveStock }
+}
+
 export function useShops() {
   const { user } = useAuth()
   const [shops, setShops] = useState<Shop[]>([])
@@ -137,6 +211,7 @@ export function useShops() {
     for (const day of days) {
       await removeDocument('shop_sales_days', day.id)
     }
+    await removeDocument('shop_stock', id).catch(() => undefined)
     await removeDocument('shops', id)
   }, [])
 

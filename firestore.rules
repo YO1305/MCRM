@@ -383,5 +383,9 @@ service cloud.firestore {
     match /shop_sales_days/{id} {
       allow read, write: if isSignedIn() && exists(userPath()) && canManageShops();
     }
+
+    match /shop_stock/{id} {
+      allow read, write: if isSignedIn() && exists(userPath()) && canManageShops();
+    }
   }
 }

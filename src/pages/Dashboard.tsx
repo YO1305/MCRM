@@ -4,8 +4,10 @@ import { where } from 'firebase/firestore'
 import { useAuth } from '@/hooks/useAuth'
 import { useClients } from '@/hooks/useClients'
 import { useAiTasks } from '@/hooks/useAiTasks'
+import { ShopsOverview } from '@/components/dashboard/ShopsOverview'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
+import { useRole } from '@/hooks/useRole'
 import { POSITION_LABELS } from '@/constants/positions'
 import { subscribeToCollection } from '@/firebase/firestore'
 import { runAiLeadAnalysisNow, runActivityAnalysisUntilDone } from '@/firebase/callable'
@@ -20,6 +22,8 @@ import { backfillLastTouchDates } from '@/utils/backfillLastTouchDates'
 
 export function Dashboard() {
   const { user, isAdmin } = useAuth()
+  const { canAccess } = useRole()
+  const showShops = canAccess('shops')
   const { clients } = useClients()
   const { tasks: aiTasks } = useAiTasks()
   const showActivity = isAdmin || canSeeLeadActivity(user)
@@ -148,6 +152,8 @@ export function Dashboard() {
           <p className="mt-1 text-xs text-muted">Всего завершённых</p>
         </Card>
       </div>
+
+      {showShops && <ShopsOverview />}
 
       {showActivity && (
         <Card className="space-y-3">

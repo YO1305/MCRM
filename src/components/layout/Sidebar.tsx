@@ -17,6 +17,7 @@ import {
   Settings,
   FileWarning,
   BookUser,
+  ShoppingBag,
   X,
 } from 'lucide-react'
 import { useRole } from '@/hooks/useRole'
@@ -39,6 +40,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/kpi', label: 'KPI', icon: BarChart3, section: 'kpi' },
   { to: '/design', label: 'Дизайн', icon: Palette, section: 'design' },
   { to: '/catalogue', label: 'Каталог и КП', icon: BookOpen, section: 'catalogue' },
+  { to: '/shops', label: 'Магазины', icon: ShoppingBag, section: 'shops' },
   { to: '/showroom', label: 'Шоурум', icon: Store, section: 'showroom' },
   { to: '/labels', label: 'Печать бирок', icon: Tag, section: 'labels' },
   { to: '/smm', label: 'Контроль СММ', icon: Megaphone, section: 'smm' },

@@ -365,5 +365,23 @@ service cloud.firestore {
     match /analytics_shares/{id} {
       allow read, write: if false;
     }
+
+    function canManageShops() {
+      return isAdmin()
+        || hasPosition('head')
+        || hasPosition('operator')
+        || (
+          userDoc().enabledSections is list
+          && 'shops' in userDoc().enabledSections
+        );
+    }
+
+    match /shops/{id} {
+      allow read, write: if isSignedIn() && exists(userPath()) && canManageShops();
+    }
+
+    match /shop_sales_days/{id} {
+      allow read, write: if isSignedIn() && exists(userPath()) && canManageShops();
+    }
   }
 }

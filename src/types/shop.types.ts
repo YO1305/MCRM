@@ -58,3 +58,39 @@ export interface ShopAbcRow {
   share: number
   abc: AbcClass
 }
+
+export type ShopPeriodMode = 'day' | 'month' | 'range'
+
+export interface ShopPeriod {
+  mode: ShopPeriodMode
+  day: string
+  month: string
+  from: string
+  to: string
+}
+
+export interface ShopStockLine {
+  article: string
+  name: string
+  qty: number
+  unitCost: number
+  salePrice: number
+  cost: number
+  saleValue: number
+  margin: number
+}
+
+export interface ShopStock {
+  id: string
+  shopId: string
+  lines: ShopStockLine[]
+  qty: number
+  cost: number
+  saleValue: number
+  margin: number
+  uploadedBy: string
+  uploadedByName: string
+  fileName: string
+  createdAt?: unknown
+  updatedAt?: unknown
+}

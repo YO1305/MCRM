@@ -1,5 +1,5 @@
-import { buildSaleLine, marginPct, parseShopNumber } from '@/utils/shopSales'
-import type { ShopAbcRow, ShopSaleLine, ShopSalesDay } from '@/types/shop.types'
+import { buildSaleLine, buildStockLine, marginPct, parseShopNumber } from '@/utils/shopSales'
+import type { ShopAbcRow, ShopSaleLine, ShopSalesDay, ShopStockLine } from '@/types/shop.types'
 
 function cell(value: unknown): string {
   if (value == null || value === '') return ''
@@ -7,7 +7,7 @@ function cell(value: unknown): string {
   return String(value).trim()
 }
 
-function headerKey(h: string): 'article' | 'name' | 'qty' | 'cost' | 'sales' | '' {
+function headerKey(h: string): 'article' | 'name' | 'qty' | 'cost' | 'sales' | 'price' | '' {
   const t = h.toLowerCase()
   if (t.includes('артик') || t.includes('артикул') || t === 'арт' || t.includes('sku') || t.includes('код')) {
     return 'article'
@@ -21,11 +21,20 @@ function headerKey(h: string): 'article' | 'name' | 'qty' | 'cost' | 'sales' | '
   if (t.includes('себест') || t.includes('закуп') || t.includes('cost')) {
     return 'cost'
   }
+  if (t.includes('сумма продаж') || t.includes('выруч') || (t.includes('сумма') && t.includes('продаж'))) {
+    return 'sales'
+  }
   if (
-    t.includes('сумма продаж') ||
+    t.includes('стоимость продаж') ||
+    t.includes('цена продаж') ||
+    t.includes('рознич') ||
+    (t.includes('цена') && !t.includes('себест'))
+  ) {
+    return 'price'
+  }
+  if (
     t.includes('продажа') ||
-    (t.includes('сумма') && !t.includes('общ') && !t.includes('себест')) ||
-    t.includes('выруч')
+    (t.includes('сумма') && !t.includes('общ') && !t.includes('себест'))
   ) {
     return 'sales'
   }
@@ -65,7 +74,7 @@ export async function parseShopSalesExcel(file: File): Promise<ShopSaleLine[]> {
         else if (key === 'name') row.name = cell(val)
         else if (key === 'qty') row.qty = parseShopNumber(val)
         else if (key === 'cost') row.unitCost = parseShopNumber(val)
-        else if (key === 'sales') row.sales = parseShopNumber(val)
+        else if (key === 'sales' || key === 'price') row.sales = parseShopNumber(val)
       })
       if (!row.article && !row.name) continue
       if (!row.article) row.article = row.name
@@ -165,4 +174,53 @@ export async function downloadShopPeriodReport(opts: {
   XLSX.utils.book_append_sheet(wb, abcSheet, 'ABC')
   const safe = opts.shopName.replace(/[\\/:*?"<>|]+/g, '_').slice(0, 40)
   XLSX.writeFile(wb, `Магазин_${safe}_${opts.month}.xlsx`)
+}
+
+export async function parseShopStockExcel(file: File): Promise<ShopStockLine[]> {
+  const XLSX = await import('xlsx')
+  const data = new Uint8Array(await file.arrayBuffer())
+  const workbook = XLSX.read(data, { type: 'array' })
+  const lines: ShopStockLine[] = []
+
+  for (const sheetName of workbook.SheetNames) {
+    const sheet = workbook.Sheets[sheetName]
+    const json = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' }) as unknown[][]
+    if (!json.length) continue
+    const headers = (json[0] || []).map((h) => headerKey(cell(h)))
+    if (!headers.includes('article') && !headers.includes('name')) continue
+
+    for (let i = 1; i < json.length; i += 1) {
+      const raw = json[i]
+      if (!raw || !raw.some((c) => cell(c))) continue
+      const row = { article: '', name: '', qty: 0, unitCost: 0, salePrice: 0 }
+      headers.forEach((key, idx) => {
+        if (!key) return
+        const val = raw[idx]
+        if (key === 'article') row.article = cell(val)
+        else if (key === 'name') row.name = cell(val)
+        else if (key === 'qty') row.qty = parseShopNumber(val)
+        else if (key === 'cost') row.unitCost = parseShopNumber(val)
+        else if (key === 'price' || key === 'sales') row.salePrice = parseShopNumber(val)
+      })
+      if (!row.article && !row.name) continue
+      if (!row.article) row.article = row.name
+      if (row.qty <= 0 && row.unitCost <= 0 && row.salePrice <= 0) continue
+      lines.push(buildStockLine(row))
+    }
+  }
+
+  return lines
+}
+
+export async function downloadShopStockTemplate(): Promise<void> {
+  const XLSX = await import('xlsx')
+  const ws = XLSX.utils.aoa_to_sheet([
+    ['Артикул', 'Название', 'Количество', 'Себестоимость', 'Стоимость продажи'],
+    ['BH-1001', 'Пододеяльник 200', 8, 120000, 150000],
+    ['BH-2040', 'Полотно сатин', 20, 85000, 140000],
+  ])
+  ws['!cols'] = [{ wch: 14 }, { wch: 28 }, { wch: 14 }, { wch: 16 }, { wch: 20 }]
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, 'Остатки')
+  XLSX.writeFile(wb, 'Шаблон_остатки_магазина.xlsx')
 }

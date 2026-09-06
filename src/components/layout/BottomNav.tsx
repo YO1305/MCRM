@@ -18,6 +18,7 @@ import {
   LineChart,
   FileWarning,
   Settings,
+  ShoppingBag,
   type LucideIcon,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
@@ -41,6 +42,7 @@ const ALL_ITEMS: NavItem[] = [
   { to: '/kpi', label: 'KPI', icon: BarChart3, section: 'kpi' },
   { to: '/design', label: 'Дизайн', icon: Palette, section: 'design' },
   { to: '/catalogue', label: 'Каталог', icon: BookOpen, section: 'catalogue' },
+  { to: '/shops', label: 'Магазины', icon: ShoppingBag, section: 'shops' },
   { to: '/showroom', label: 'Шоурум', icon: Store, section: 'showroom' },
   { to: '/labels', label: 'Бирки', icon: Tag, section: 'labels' },
   { to: '/smm', label: 'СММ', icon: Megaphone, section: 'smm' },

@@ -19,6 +19,7 @@ export type AppSection =
   | 'requests'
   | 'settings'
   | 'catalogue'
+  | 'shops'
 
 /**
  * Who sees what by default (должность).
@@ -44,6 +45,7 @@ export const SECTION_ACCESS: Record<AppSection, Position[] | 'all' | 'admin'> = 
   analytics: 'admin',
   requests: 'admin',
   catalogue: ['designer', 'head', 'leads_manager_1', 'leads_manager_2'],
+  shops: ['operator', 'head'],
 }
 
 /** Все пункты меню — админ может включать/выключать каждый. */
@@ -63,6 +65,7 @@ export const CONFIGURABLE_SECTIONS: AppSection[] = [
   'analytics',
   'requests',
   'catalogue',
+  'shops',
   'settings',
 ]
 
@@ -83,6 +86,7 @@ export const SECTION_LABELS: Record<AppSection, string> = {
   analytics: 'Аналитика',
   requests: 'Заявки',
   catalogue: 'Каталог и КП',
+  shops: 'Магазины',
   settings: 'Настройки',
 }
 
@@ -103,6 +107,7 @@ export const SECTION_PATHS: Record<AppSection, string> = {
   analytics: '/analytics',
   requests: '/requests',
   catalogue: '/catalogue',
+  shops: '/shops',
   settings: '/settings',
 }
 

@@ -4,7 +4,7 @@ import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { useAllShopSales, useShops } from '@/hooks/useShops'
 import { getCurrentMonth } from '@/utils/dates'
-import { formatShopMoney, marginPct } from '@/utils/shopSales'
+import { lastDayOfMonthKey, rangesOverlap, reportRange, formatShopMoney, marginPct } from '@/utils/shopSales'
 
 export function ShopsOverview() {
   const { shops, loading: shopsLoading } = useShops()
@@ -13,7 +13,13 @@ export function ShopsOverview() {
 
   const rows = useMemo(() => {
     return shops.map((shop) => {
-      const shopDays = days.filter((d) => d.shopId === shop.id && d.date.startsWith(month))
+      const monthFrom = `${month}-01`
+      const monthTo = lastDayOfMonthKey(month)
+      const shopDays = days.filter((d) => {
+        if (d.shopId !== shop.id) return false
+        const span = reportRange(d)
+        return rangesOverlap(span.from, span.to, monthFrom, monthTo)
+      })
       const sales = shopDays.reduce((s, d) => s + (d.sales || 0), 0)
       const margin = shopDays.reduce((s, d) => s + (d.margin || 0), 0)
       const qty = shopDays.reduce((s, d) => s + (d.qty || 0), 0)

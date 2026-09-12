@@ -30,10 +30,15 @@ export interface ShopSaleLine {
   margin: number
 }
 
+export type ShopReportKind = 'day' | 'month' | 'range'
+
 export interface ShopSalesDay {
   id: string
   shopId: string
   date: string
+  periodType?: ShopReportKind
+  periodFrom?: string
+  periodTo?: string
   lines: ShopSaleLine[]
   qty: number
   cost: number

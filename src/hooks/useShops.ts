@@ -11,8 +11,16 @@ import {
   updateDocument,
 } from '@/firebase/firestore'
 import { useAuth } from '@/hooks/useAuth'
-import type { Shop, ShopInput, ShopSaleLine, ShopSalesDay, ShopStock, ShopStockLine } from '@/types/shop.types'
-import { salesDayId, stockTotals, totalsOf } from '@/utils/shopSales'
+import type {
+  Shop,
+  ShopInput,
+  ShopReportKind,
+  ShopSaleLine,
+  ShopSalesDay,
+  ShopStock,
+  ShopStockLine,
+} from '@/types/shop.types'
+import { salesReportId, stockTotals, totalsOf } from '@/utils/shopSales'
 
 function normalizeLocationUrl(raw: string): string {
   const t = raw.trim()
@@ -54,16 +62,26 @@ export function useShopSales(shopId: string | undefined) {
   }, [shopId])
 
   const upsertDay = useCallback(
-    async (input: { date: string; lines: ShopSaleLine[]; fileName: string }) => {
+    async (input: {
+      periodType: ShopReportKind
+      periodFrom: string
+      periodTo: string
+      lines: ShopSaleLine[]
+      fileName: string
+    }) => {
       if (!shopId || !user) throw new Error('Нужно войти')
-      if (!input.date) throw new Error('Укажите дату отчёта')
+      if (!input.periodFrom || !input.periodTo) throw new Error('Укажите период отчёта')
+      if (input.periodFrom > input.periodTo) throw new Error('Дата «с» позже даты «по»')
       if (!input.lines.length) throw new Error('В файле нет строк продаж')
       const totals = totalsOf(input.lines)
-      const id = salesDayId(shopId, input.date)
+      const id = salesReportId(shopId, input.periodType, input.periodFrom, input.periodTo)
       const existing = await getDocument<ShopSalesDay>('shop_sales_days', id)
       await setDocument('shop_sales_days', id, {
         shopId,
-        date: input.date,
+        date: input.periodFrom,
+        periodType: input.periodType,
+        periodFrom: input.periodFrom,
+        periodTo: input.periodTo,
         lines: input.lines,
         qty: totals.qty,
         cost: totals.cost,

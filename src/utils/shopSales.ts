@@ -2,10 +2,12 @@ import type {
   AbcClass,
   ShopAbcRow,
   ShopPeriod,
+  ShopReportKind,
   ShopSaleLine,
   ShopSalesDay,
   ShopStockLine,
 } from '@/types/shop.types'
+import { toISODate } from '@/utils/dates'
 
 export function parseShopNumber(value: unknown): number {
   if (typeof value === 'number' && Number.isFinite(value)) return value
@@ -127,13 +129,36 @@ export function abcTotals(rows: ShopAbcRow[]) {
   )
 }
 
+export function reportRange(day: ShopSalesDay): { from: string; to: string } {
+  const from = day.periodFrom || day.date
+  const to = day.periodTo || day.date
+  return { from, to }
+}
+
+export function rangesOverlap(aFrom: string, aTo: string, bFrom: string, bTo: string): boolean {
+  return aFrom <= bTo && aTo >= bFrom
+}
+
+export function lastDayOfMonthKey(monthKey: string): string {
+  const [y, m] = monthKey.split('-').map(Number)
+  return toISODate(new Date(y, m, 0))
+}
+
 export function filterDaysByPeriod(days: ShopSalesDay[], period: ShopPeriod): ShopSalesDay[] {
-  if (period.mode === 'day') return days.filter((d) => d.date === period.day)
-  if (period.mode === 'month') return days.filter((d) => d.date.startsWith(period.month))
-  const from = period.from || period.to
-  const to = period.to || period.from
+  let from = period.from || period.to
+  let to = period.to || period.from
+  if (period.mode === 'day') {
+    from = period.day
+    to = period.day
+  } else if (period.mode === 'month') {
+    from = `${period.month}-01`
+    to = lastDayOfMonthKey(period.month)
+  }
   if (!from) return days
-  return days.filter((d) => d.date >= from && d.date <= (to || from))
+  return days.filter((d) => {
+    const span = reportRange(d)
+    return rangesOverlap(span.from, span.to, from, to || from)
+  })
 }
 
 export function dailySeries(days: ShopSalesDay[]) {
@@ -200,6 +225,37 @@ export function stockTotals(lines: ShopStockLine[]) {
 
 export function salesDayId(shopId: string, date: string): string {
   return `${shopId}_${date}`
+}
+
+export function salesReportId(
+  shopId: string,
+  kind: ShopReportKind,
+  from: string,
+  to = from,
+): string {
+  if (kind === 'month') return `${shopId}_m_${from.slice(0, 7)}`
+  if (kind === 'range') return `${shopId}_r_${from}_${to}`
+  return `${shopId}_${from}`
+}
+
+export function reportKindLabel(kind: ShopReportKind | undefined): string {
+  if (kind === 'month') return 'Месяц'
+  if (kind === 'range') return 'Период'
+  return 'День'
+}
+
+export function reportTitle(day: ShopSalesDay): string {
+  const span = reportRange(day)
+  const kind = day.periodType || 'day'
+  if (kind === 'month') {
+    const [y, m] = span.from.slice(0, 7).split('-').map(Number)
+    return new Date(y, (m || 1) - 1, 1).toLocaleDateString('ru-RU', {
+      month: 'long',
+      year: 'numeric',
+    })
+  }
+  if (kind === 'range' && span.from !== span.to) return `${span.from} — ${span.to}`
+  return span.from
 }
 
 export function defaultShopPeriod(today = ''): ShopPeriod {

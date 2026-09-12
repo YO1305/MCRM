@@ -5,11 +5,12 @@ import { ShopAbcTable } from '@/components/shops/ShopAbcTable'
 import { ShopAbcDonut, ShopSalesBars } from '@/components/shops/ShopCharts'
 import { ShopForm } from '@/components/shops/ShopForm'
 import { ShopPeriodBar } from '@/components/shops/ShopPeriodBar'
+import { ShopUploadPanel } from '@/components/shops/ShopUploadPanel'
+import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
-import { Input } from '@/components/ui/Input'
 import { useShopSales, useShopStock, useShops } from '@/hooks/useShops'
-import type { ShopInput, ShopPeriod } from '@/types/shop.types'
+import type { ShopInput, ShopPeriod, ShopReportKind } from '@/types/shop.types'
 import { todayISO } from '@/utils/dates'
 import {
   downloadShopPeriodReport,
@@ -28,6 +29,9 @@ import {
   formatShopMoney,
   marginPct,
   periodLabel,
+  reportKindLabel,
+  reportTitle,
+  salesReportId,
   totalsOf,
 } from '@/utils/shopSales'
 
@@ -50,11 +54,9 @@ export function ShopDetail() {
 
   const [tab, setTab] = useState<ShopTab>('dashboard')
   const [period, setPeriod] = useState<ShopPeriod>(() => defaultShopPeriod(todayISO()))
-  const [reportDate, setReportDate] = useState(todayISO())
   const [busy, setBusy] = useState(false)
   const [formError, setFormError] = useState('')
   const [message, setMessage] = useState('')
-  const fileRef = useRef<HTMLInputElement>(null)
   const stockRef = useRef<HTMLInputElement>(null)
 
   const periodDays = useMemo(() => filterDaysByPeriod(days, period), [days, period])
@@ -93,8 +95,8 @@ export function ShopDetail() {
     }
   }
 
-  async function handleUpload(file: File | undefined) {
-    if (!file || !shop) return
+  async function handleUpload(file: File, kind: ShopReportKind, from: string, to: string) {
+    if (!shop) return
     setBusy(true)
     setMessage('')
     try {
@@ -102,18 +104,30 @@ export function ShopDetail() {
       if (!parsed.length) {
         throw new Error('В файле нет строк. Нужны колонки: артикул, количество, себестоимость, сумма продажи.')
       }
-      const exists = days.some((d) => d.date === reportDate)
-      if (exists && !confirm(`Отчёт за ${reportDate} уже есть. Заменить данными из файла?`)) return
-      const result = await upsertDay({ date: reportDate, lines: parsed, fileName: file.name })
+      const id = salesReportId(shop.id, kind, from, to)
+      const exists = days.some((d) => d.id === id)
+      const title =
+        kind === 'month'
+          ? from.slice(0, 7)
+          : kind === 'range'
+            ? `${from} — ${to}`
+            : from
+      if (exists && !confirm(`Отчёт за ${title} уже есть. Заменить данными из файла?`)) return
+      const result = await upsertDay({
+        periodType: kind,
+        periodFrom: from,
+        periodTo: to,
+        lines: parsed,
+        fileName: file.name,
+      })
       const t = totalsOf(parsed)
       setMessage(
-        `${result.replaced ? 'Обновлён' : 'Загружен'} отчёт за ${reportDate}: ${parsed.length} позиций, оборот ${formatShopMoney(t.sales)}.`,
+        `${result.replaced ? 'Обновлён' : 'Загружен'} отчёт за ${title}: ${parsed.length} позиций, оборот ${formatShopMoney(t.sales)}.`,
       )
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'Не удалось обработать файл')
     } finally {
       setBusy(false)
-      if (fileRef.current) fileRef.current.value = ''
     }
   }
 
@@ -295,9 +309,10 @@ export function ShopDetail() {
           <Card className="space-y-4">
             <div className="flex flex-wrap items-end justify-between gap-3">
               <div>
-                <h2 className="text-base font-semibold text-text">Загрузить отчёт за день</h2>
+                <h2 className="text-base font-semibold text-text">Загрузить отчёт</h2>
                 <p className="mt-0.5 text-xs text-muted">
-                  Excel: артикул, количество, себестоимость, сумма продажи. Повтор за ту же дату заменяет отчёт.
+                  Нажмите «Загрузить отчёт» и выберите: день, месяц или период. Excel тот же:
+                  артикул, количество, себестоимость, сумма продажи.
                 </p>
               </div>
               <Button type="button" variant="ghost" size="sm" onClick={() => downloadShopSalesTemplate()}>
@@ -305,26 +320,7 @@ export function ShopDetail() {
                 Шаблон
               </Button>
             </div>
-            <div className="flex flex-wrap items-end gap-3">
-              <Input
-                type="date"
-                label="Дата отчёта"
-                name="report-date"
-                value={reportDate}
-                onChange={(e) => setReportDate(e.target.value)}
-              />
-              <input
-                ref={fileRef}
-                type="file"
-                accept=".xlsx,.xls,.csv"
-                className="hidden"
-                onChange={(e) => void handleUpload(e.target.files?.[0])}
-              />
-              <Button type="button" disabled={busy} onClick={() => fileRef.current?.click()}>
-                <Upload size={16} />
-                {busy ? 'Обработка...' : 'Загрузить Excel'}
-              </Button>
-            </div>
+            <ShopUploadPanel busy={busy} onUpload={handleUpload} />
             {message && <p className="text-sm text-text">{message}</p>}
           </Card>
 
@@ -336,7 +332,7 @@ export function ShopDetail() {
               <table className="min-w-full text-left text-sm">
                 <thead>
                   <tr className="border-b border-gray-100 text-xs uppercase text-muted">
-                    <th className="px-2 py-2">Дата</th>
+                    <th className="px-2 py-2">Период</th>
                     <th className="px-2 py-2">Файл</th>
                     <th className="px-2 py-2 text-right">Шт</th>
                     <th className="px-2 py-2 text-right">Продажи</th>
@@ -348,7 +344,12 @@ export function ShopDetail() {
                 <tbody>
                   {days.map((day) => (
                     <tr key={day.id} className="border-b border-gray-50">
-                      <td className="px-2 py-2 font-medium text-text">{day.date}</td>
+                      <td className="px-2 py-2 font-medium text-text">
+                        <span className="mr-2">{reportTitle(day)}</span>
+                        <Badge variant={day.periodType === 'month' ? 'info' : day.periodType === 'range' ? 'warning' : 'default'}>
+                          {reportKindLabel(day.periodType)}
+                        </Badge>
+                      </td>
                       <td className="px-2 py-2 text-muted">{day.fileName || '—'}</td>
                       <td className="px-2 py-2 text-right">{formatShopMoney(day.qty)}</td>
                       <td className="px-2 py-2 text-right">{formatShopMoney(day.sales)}</td>
@@ -361,7 +362,7 @@ export function ShopDetail() {
                           size="sm"
                           disabled={busy}
                           onClick={() => {
-                            if (confirm(`Удалить отчёт за ${day.date}?`)) void deleteDay(day.id)
+                            if (confirm(`Удалить отчёт за ${reportTitle(day)}?`)) void deleteDay(day.id)
                           }}
                         >
                           <Trash2 size={14} />

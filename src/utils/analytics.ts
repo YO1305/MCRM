@@ -63,8 +63,8 @@ export function buildCrmAnalytics(clients: Client[], contacts: Contact[]) {
   const pipeline = allPipelineStages()
   for (const s of pipeline) byStage.set(s.value, emptyCS())
 
-  const byLeadManager = new Map<string, CountSum & { name: string }>()
-  const bySalesManager = new Map<string, CountSum & { name: string }>()
+  const byLeadManager = new Map<string, CountSum & { name: string; id: string }>()
+  const bySalesManager = new Map<string, CountSum & { name: string; id: string }>()
   const byProduct = {
     fabric: emptyCS(),
     finished: emptyCS(),
@@ -93,7 +93,7 @@ export function buildCrmAnalytics(clients: Client[], contacts: Contact[]) {
     const leadKey = c.assignedTo || 'unassigned'
     const leadName = c.assignedToName || 'Без менеджера'
     if (!byLeadManager.has(leadKey)) {
-      byLeadManager.set(leadKey, { ...emptyCS(), name: leadName })
+      byLeadManager.set(leadKey, { ...emptyCS(), name: leadName, id: leadKey })
     }
     const leadRow = byLeadManager.get(leadKey)!
     leadRow.name = leadName
@@ -104,7 +104,7 @@ export function buildCrmAnalytics(clients: Client[], contacts: Contact[]) {
       const sk = c.salesManagerId || c.salesManagerName || 'unknown'
       const sn = c.salesManagerName || 'Менеджер продаж'
       if (!bySalesManager.has(sk)) {
-        bySalesManager.set(sk, { ...emptyCS(), name: sn })
+        bySalesManager.set(sk, { ...emptyCS(), name: sn, id: sk })
       }
       const sRow = bySalesManager.get(sk)!
       sRow.name = sn

@@ -20,7 +20,7 @@ import type { User } from '@/types/user.types'
 
 export function Settings() {
   const { user, isAdmin } = useAuth()
-  const { users, loading } = useUsers(isAdmin)
+  const { users, loading } = useUsers(isAdmin, { includeInactive: true })
   const { templates, restartDailyTasks, dedupeTodayTasks } = useTaskTemplates(
     isAdmin ? undefined : null,
   )
@@ -165,60 +165,12 @@ export function Settings() {
             {loading ? (
               <p className="text-sm text-muted">Загрузка...</p>
             ) : (
-              <ul className="divide-y divide-gray-100">
-                {users.map((member) => {
-                  const total = templateCount(member.id)
-                  const daily = dailyCount(member.id)
-                  const noLogin = member.hasLogin === false
-                  return (
-                    <li
-                      key={member.id}
-                      className="flex flex-wrap items-center justify-between gap-2 py-2.5 text-sm"
-                    >
-                      <div>
-                        <p className="font-medium text-text">{member.name}</p>
-                        <p className="text-xs text-muted">
-                          {noLogin
-                            ? 'Без входа'
-                            : member.email || '—'}{' '}
-                          · {POSITION_LABELS[member.position]}
-                          {total > 0
-                            ? ` · шаблонов: ${total} (ежедневных: ${daily})`
-                            : ' · шаблонов пока нет'}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {noLogin && <Badge variant="default">Без входа</Badge>}
-                        {isRecurringTasksPaused(member) ? (
-                          <Badge variant="warning">
-                            Пауза до {formatISODateShort(member.recurringTasksPausedUntil || '')}
-                          </Badge>
-                        ) : member.recurringTasksPausedUntil &&
-                          member.recurringTasksPausedUntil >= todayISO() ? (
-                          <Badge variant="default">
-                            Пауза с{' '}
-                            {formatISODateShort(
-                              member.recurringTasksPausedFrom || member.recurringTasksPausedUntil,
-                            )}
-                          </Badge>
-                        ) : null}
-                        <Badge variant={member.role === 'admin' ? 'info' : 'default'}>
-                          {member.role === 'admin' ? 'Admin' : 'Employee'}
-                        </Badge>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => setSelected(member)}
-                        >
-                          <Settings2 className="h-3.5 w-3.5" />
-                          Логин и настройки
-                        </Button>
-                      </div>
-                    </li>
-                  )
-                })}
-              </ul>
+              <TeamMembersList
+                users={users}
+                templateCount={templateCount}
+                dailyCount={dailyCount}
+                onOpen={setSelected}
+              />
             )}
           </Card>
         </>
@@ -239,6 +191,96 @@ export function Settings() {
           member={users.find((u) => u.id === selected.id) ?? selected}
           onClose={() => setSelected(null)}
         />
+      )}
+    </div>
+  )
+}
+
+function TeamMembersList({
+  users,
+  templateCount,
+  dailyCount,
+  onOpen,
+}: {
+  users: User[]
+  templateCount: (userId: string) => number
+  dailyCount: (userId: string) => number
+  onOpen: (member: User) => void
+}) {
+  const active = users.filter((u) => u.isActive !== false)
+  const dismissed = users.filter((u) => u.isActive === false)
+
+  function row(member: User) {
+    const total = templateCount(member.id)
+    const daily = dailyCount(member.id)
+    const noLogin = member.hasLogin === false
+    const fired = member.isActive === false
+    return (
+      <li
+        key={member.id}
+        className={`flex flex-wrap items-center justify-between gap-2 py-2.5 text-sm ${
+          fired ? 'opacity-80' : ''
+        }`}
+      >
+        <div>
+          <p className="font-medium text-text">{member.name}</p>
+          <p className="text-xs text-muted">
+            {noLogin ? 'Без входа' : member.email || '—'} · {POSITION_LABELS[member.position]}
+            {fired
+              ? ' · место вакантно'
+              : total > 0
+                ? ` · шаблонов: ${total} (ежедневных: ${daily})`
+                : ' · шаблонов пока нет'}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {fired && <Badge variant="warning">Уволен</Badge>}
+          {noLogin && !fired && <Badge variant="default">Без входа</Badge>}
+          {!fired && isRecurringTasksPaused(member) ? (
+            <Badge variant="warning">
+              Пауза до {formatISODateShort(member.recurringTasksPausedUntil || '')}
+            </Badge>
+          ) : !fired &&
+            member.recurringTasksPausedUntil &&
+            member.recurringTasksPausedUntil >= todayISO() ? (
+            <Badge variant="default">
+              Пауза с{' '}
+              {formatISODateShort(
+                member.recurringTasksPausedFrom || member.recurringTasksPausedUntil,
+              )}
+            </Badge>
+          ) : null}
+          <Badge variant={member.role === 'admin' ? 'info' : 'default'}>
+            {member.role === 'admin' ? 'Admin' : 'Employee'}
+          </Badge>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            onClick={() => onOpen(member)}
+          >
+            <Settings2 className="h-3.5 w-3.5" />
+            Логин и настройки
+          </Button>
+        </div>
+      </li>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      <ul className="divide-y divide-gray-100">{active.map(row)}</ul>
+      {dismissed.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted">
+            Уволенные · должность свободна
+          </p>
+          <p className="text-xs text-muted">
+            Их данные и история остаются. В KPI, отчётах и назначениях они не участвуют,
+            пока не вернёте в команду или не добавите нового сотрудника на эту должность.
+          </p>
+          <ul className="divide-y divide-gray-100">{dismissed.map(row)}</ul>
+        </div>
       )}
     </div>
   )

@@ -60,6 +60,13 @@ export function Reports() {
     if (user && !canPickEmployee) setEmployeeId(user.id)
   }, [user, canPickEmployee])
 
+  useEffect(() => {
+    if (!canPickEmployee) return
+    if (employeeId && !teamUsers.some((u) => u.id === employeeId)) {
+      setEmployeeId(teamUsers[0]?.id || user?.id || '')
+    }
+  }, [canPickEmployee, employeeId, teamUsers, user?.id])
+
   const selectedUser = useMemo(
     () => teamUsers.find((u) => u.id === employeeId) || user,
     [teamUsers, employeeId, user],

@@ -4,6 +4,7 @@ import { useClients } from '@/hooks/useClients'
 import { useContacts } from '@/hooks/useContacts'
 import { useTasks } from '@/hooks/useTasks'
 import { useTaskTemplates } from '@/hooks/useTaskTemplates'
+import { useUsers } from '@/hooks/useUsers'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
@@ -90,11 +91,18 @@ export function Analytics() {
   const { contacts, loading: contactsLoading } = useContacts(true)
   const { tasks, loading: tasksLoading } = useTasks()
   const { templates, loading: tplLoading } = useTaskTemplates()
+  const { users } = useUsers(true)
+  const activeIds = useMemo(() => new Set(users.map((u) => u.id)), [users])
 
   const crm = useMemo(() => buildCrmAnalytics(clients, contacts), [clients, contacts])
   const tasksStats = useMemo(
-    () => buildTasksAnalytics(tasks, templates, taskMonth),
-    [tasks, templates, taskMonth],
+    () =>
+      buildTasksAnalytics(
+        tasks.filter((t) => activeIds.has(t.assignedTo)),
+        templates,
+        taskMonth,
+      ),
+    [tasks, templates, taskMonth, activeIds],
   )
 
   const loading =
@@ -132,11 +140,11 @@ export function Analytics() {
       {loading ? (
         <p className="text-sm text-muted">Загрузка данных...</p>
       ) : tab === 'crm' ? (
-        <CrmSection crm={crm} clients={clients} />
+        <CrmSection crm={crm} clients={clients} activeIds={activeIds} />
       ) : (
         <TasksSection
           stats={tasksStats}
-          tasks={tasks}
+          tasks={tasks.filter((t) => activeIds.has(t.assignedTo))}
           month={taskMonth}
           onMonthChange={setTaskMonth}
           months={monthOptions()}
@@ -386,11 +394,19 @@ function ClientsDetailList({
 function CrmSection({
   crm,
   clients,
+  activeIds,
 }: {
   crm: ReturnType<typeof buildCrmAnalytics>
   clients: Client[]
+  activeIds: Set<string>
 }) {
   const [funnelFull, setFunnelFull] = useState(false)
+  const leadRows = crm.leadRows.filter(
+    (r) => r.id === 'unassigned' || activeIds.has(r.id),
+  )
+  const salesRows = crm.salesRows.filter(
+    (r) => r.id === 'unknown' || activeIds.has(r.id),
+  )
 
   return (
     <div className="space-y-4">
@@ -454,7 +470,7 @@ function CrmSection({
         title="По менеджерам лидов"
         hint="У кого сколько лидов в работе"
         columns={['Менеджер', 'Лидов', 'Актив', 'Пассив', 'Сумма']}
-        rows={crm.leadRows.map((r) => [
+        rows={leadRows.map((r) => [
           r.name,
           r.count,
           r.active,
@@ -475,7 +491,7 @@ function CrmSection({
         title="Передано менеджерам продаж"
         hint="Кому переданы лиды из CRM"
         columns={['Менеджер продаж', 'Лидов', 'Актив', 'Пассив', 'Сумма']}
-        rows={crm.salesRows.map((r) => [
+        rows={salesRows.map((r) => [
           r.name,
           r.count,
           r.active,

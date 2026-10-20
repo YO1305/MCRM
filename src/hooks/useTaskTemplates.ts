@@ -92,6 +92,7 @@ export function useTaskTemplates(userId?: string | null) {
 
   function isAssigneePaused(assigneeId: string, dateISO: string = todayISO()): boolean {
     const assignee = usersRef.current.find((u) => u.id === assigneeId)
+    if (!assignee || assignee.isActive === false) return true
     return isRecurringTasksPaused(assignee, dateISO)
   }
 

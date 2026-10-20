@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { where } from 'firebase/firestore'
 import { useAuth } from '@/hooks/useAuth'
+import { useUsers } from '@/hooks/useUsers'
 import { useClients } from '@/hooks/useClients'
 import { useAiTasks } from '@/hooks/useAiTasks'
 import { ShopsOverview } from '@/components/dashboard/ShopsOverview'
@@ -24,6 +25,7 @@ export function Dashboard() {
   const { user, isAdmin } = useAuth()
   const { canAccess } = useRole()
   const showShops = canAccess('shops')
+  const { users } = useUsers(isAdmin)
   const { clients } = useClients()
   const { tasks: aiTasks } = useAiTasks()
   const showActivity = isAdmin || canSeeLeadActivity(user)
@@ -59,6 +61,12 @@ export function Dashboard() {
   }, [user, isAdmin])
 
   const today = todayISO()
+  const activeIds = useMemo(() => new Set(users.map((u) => u.id)), [users])
+
+  const visibleTasks = useMemo(() => {
+    if (!isAdmin) return tasks
+    return tasks.filter((t) => activeIds.has(t.assignedTo))
+  }, [isAdmin, tasks, activeIds])
 
   const aiOverview = useMemo(() => {
     if (!isAdmin) return null
@@ -76,7 +84,11 @@ export function Dashboard() {
       }
       return false
     }
-    const todays = aiTasks.filter((t) => isToday(t.generatedAt) || t.status === 'pending')
+    const todays = aiTasks.filter(
+      (t) =>
+        activeIds.has(t.assignedTo) &&
+        (isToday(t.generatedAt) || t.status === 'pending'),
+    )
     const byManager = new Map<string, { name: string; total: number; done: number }>()
     for (const t of todays) {
       const row = byManager.get(t.assignedTo) || {
@@ -92,24 +104,24 @@ export function Dashboard() {
     const total = rows.reduce((s, r) => s + r.total, 0)
     const done = rows.reduce((s, r) => s + r.done, 0)
     return { rows, total, done }
-  }, [aiTasks, isAdmin, today])
+  }, [aiTasks, isAdmin, today, activeIds])
 
   const stats = useMemo(() => {
-    const active = tasks.filter((t) => t.status !== 'done')
+    const active = visibleTasks.filter((t) => t.status !== 'done')
     return {
       active: active.length,
       today: active.filter((t) => t.dueDate === today).length,
       overdue: active.filter((t) => t.dueDate && t.dueDate < today).length,
-      done: tasks.filter((t) => t.status === 'done').length,
+      done: visibleTasks.filter((t) => t.status === 'done').length,
     }
-  }, [tasks, today])
+  }, [visibleTasks, today])
 
   const nextTasks = useMemo(
     () =>
-      tasks
+      visibleTasks
         .filter((t) => t.status !== 'done')
         .slice(0, 5),
-    [tasks],
+    [visibleTasks],
   )
 
   return (

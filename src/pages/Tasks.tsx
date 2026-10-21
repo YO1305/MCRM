@@ -117,11 +117,15 @@ export function Tasks() {
     return users.filter((u) => u.position !== 'head' || u.id === user?.id)
   }, [canCreateTasks, users, user?.id])
 
+  const activeIds = useMemo(() => new Set(users.map((u) => u.id)), [users])
+
   const scopedTasks = useMemo(() => {
     if (!canCreateTasks) return tasks
-    if (assigneeFilter === 'all') return tasks
+    if (assigneeFilter === 'all') {
+      return tasks.filter((t) => activeIds.has(t.assignedTo))
+    }
     return tasks.filter((t) => t.assignedTo === assigneeFilter)
-  }, [tasks, canCreateTasks, assigneeFilter])
+  }, [tasks, canCreateTasks, assigneeFilter, activeIds])
 
   const hasDateFilter = Boolean(dateFrom || dateTo)
 
@@ -134,7 +138,10 @@ export function Tasks() {
     return true
   }
 
-  const teamStats = useMemo(() => calcStats(tasks, today), [tasks, today])
+  const teamStats = useMemo(
+    () => calcStats(canCreateTasks ? tasks.filter((t) => activeIds.has(t.assignedTo)) : tasks, today),
+    [tasks, today, canCreateTasks, activeIds],
+  )
   const personStats = useMemo(() => {
     const list = hasDateFilter
       ? scopedTasks.filter((t) => matchesDateRange(t, t.status === 'done'))

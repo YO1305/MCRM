@@ -9,6 +9,9 @@
     "api/ai-lead-analysis.js": {
       "maxDuration": 60
     },
+    "api/ai-activity-analysis.js": {
+      "maxDuration": 60
+    },
     "api/ai-test-prompt.js": {
       "maxDuration": 30
     }
@@ -17,6 +20,10 @@
     {
       "path": "/api/ai-lead-analysis",
       "schedule": "15 3 * * *"
+    },
+    {
+      "path": "/api/ai-activity-analysis",
+      "schedule": "20 3 * * *"
     }
   ]
 }

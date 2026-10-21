@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 import { useUsers } from '@/hooks/useUsers'
 import { useKpiLeads } from '@/hooks/useKpiLeads'
@@ -33,7 +33,7 @@ export function KPI() {
   const [managerId, setManagerId] = useState(isAdmin ? 'all' : user?.id || '')
 
   const effectiveUserId = isAdmin ? managerId : user?.id || ''
-  const { counts, leads, loading } = useKpiLeads(effectiveUserId, month)
+  const { counts: rawCounts, leads: rawLeads, loading } = useKpiLeads(effectiveUserId, month)
 
   const managers = useMemo(
     () =>
@@ -48,6 +48,33 @@ export function KPI() {
       ),
     [users],
   )
+
+  const activeIds = useMemo(() => new Set(users.map((u) => u.id)), [users])
+
+  const leads = useMemo(() => {
+    if (!isAdmin || managerId !== 'all') return rawLeads
+    return rawLeads.filter((lead) => activeIds.has(lead.assignedTo))
+  }, [isAdmin, managerId, rawLeads, activeIds])
+
+  const counts = useMemo(() => {
+    if (!isAdmin || managerId !== 'all') return rawCounts
+    let fabric = 0
+    let finished = 0
+    let europe = 0
+    for (const lead of leads) {
+      const cats = lead.categories?.length ? lead.categories : lead.category ? [lead.category] : []
+      if (cats.includes('fabric')) fabric += 1
+      if (cats.includes('finished')) finished += 1
+      if (cats.includes('europe')) europe += 1
+    }
+    return { fabric, finished, europe, total: leads.length }
+  }, [isAdmin, managerId, rawCounts, leads])
+
+  useEffect(() => {
+    if (managerId !== 'all' && !managers.some((m) => m.id === managerId)) {
+      setManagerId('all')
+    }
+  }, [managers, managerId])
 
   const rows: { key: LeadCategory; label: string; fact: number }[] = [
     { key: 'fabric', label: LEAD_CATEGORIES.fabric, fact: counts.fabric },

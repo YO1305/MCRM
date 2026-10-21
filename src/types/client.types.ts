@@ -83,6 +83,17 @@ export interface Client {
   openedMonth?: string | null
   activityStatus?: ActivityStatus
   activeMonthsCount?: number
+  /** Groq monthly activity (active/passive/paused) */
+  activityScore?: number | null
+  activityLabel?: 'active' | 'passive' | 'paused' | null
+  activityMonth?: string | null
+  activityAnalyzedAt?: unknown
+  activityReason?: string | null
+  activeDaysThisMonth?: number | null
+  activityCarriedFrom?: string | null
+  kpiQualified?: boolean | null
+  kpiQualifiedMonth?: string | null
+  kpiQualifiedAt?: unknown
   createdAt: unknown
   updatedAt: unknown
 }

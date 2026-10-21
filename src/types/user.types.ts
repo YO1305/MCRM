@@ -19,6 +19,8 @@ export interface User {
   position: Position
   avatar?: string
   isActive: boolean
+  /** YYYY-MM-DD when the employee was dismissed; null/undefined if active */
+  deactivatedAt?: string | null
   /** false = в команде без входа в CRM; true/undefined = есть логин */
   hasLogin?: boolean
   /** null/undefined = default by position; array = custom menu */

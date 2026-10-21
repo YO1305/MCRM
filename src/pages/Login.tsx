@@ -44,6 +44,8 @@ export function Login() {
         setError('Некорректный email')
       } else if (code === 'auth/too-many-requests') {
         setError('Слишком много попыток. Попробуйте позже')
+      } else if (code === 'auth/employee-dismissed') {
+        setError('Сотрудник уволен. Вход закрыт')
       } else if (code === 'auth/unauthorized-domain') {
         setError('Домен не разрешён в Firebase Auth')
       } else if (code === 'auth/network-request-failed') {

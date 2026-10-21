@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { CalendarOff, Check, Pencil, Plus, Trash2, X } from 'lucide-react'
+import { CalendarOff, Check, Pencil, Plus, Trash2, UserMinus, UserPlus, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Textarea } from '@/components/ui/Textarea'
 import { Badge } from '@/components/ui/Badge'
 import { updateDocument } from '@/firebase/firestore'
 import { adminSetUserCredentials } from '@/firebase/callable'
+import { useAuth } from '@/hooks/useAuth'
+import { isEmploymentActive } from '@/hooks/useUsers'
 import { useTaskTemplates } from '@/hooks/useTaskTemplates'
 import {
   CONFIGURABLE_SECTIONS,
@@ -90,6 +92,7 @@ function scheduleHint(t: TaskTemplate | Draft) {
 }
 
 export function EmployeeConstructor({ member, onClose }: EmployeeConstructorProps) {
+  const { user: currentUser } = useAuth()
   const defaults = useMemo(() => defaultConfigurableSections(member.position), [member.position])
   const [sections, setSections] = useState<AppSection[]>(
     Array.isArray(member.enabledSections) ? member.enabledSections : defaults,
@@ -259,6 +262,7 @@ export function EmployeeConstructor({ member, onClose }: EmployeeConstructorProp
             <h2 className="text-lg font-bold text-text">Настройки · {member.name}</h2>
             <p className="text-xs text-muted">
               {POSITION_LABELS[member.position]} · логин/пароль, меню и постоянные задачи
+              {!isEmploymentActive(member) ? ' · уволен, место вакантно' : ''}
             </p>
           </div>
           <button
@@ -272,6 +276,16 @@ export function EmployeeConstructor({ member, onClose }: EmployeeConstructorProp
         </div>
 
         <div className="space-y-6 p-4 sm:p-5">
+          <EmploymentSection
+            member={member}
+            canDismiss={currentUser?.id !== member.id}
+            onClearedOpenTasks={clearOpenGeneratedTasks}
+            onMessage={(ok, err) => {
+              setOkMsg(ok)
+              setError(err)
+            }}
+          />
+
           <CredentialsSection member={member} />
 
           <PauseTasksSection
@@ -591,6 +605,115 @@ export function EmployeeConstructor({ member, onClose }: EmployeeConstructorProp
         </div>
       </div>
     </div>
+  )
+}
+
+function EmploymentSection({
+  member,
+  canDismiss,
+  onClearedOpenTasks,
+  onMessage,
+}: {
+  member: User
+  canDismiss: boolean
+  onClearedOpenTasks: (employeeId: string) => Promise<number>
+  onMessage: (ok: string, err: string) => void
+}) {
+  const [busy, setBusy] = useState(false)
+  const active = isEmploymentActive(member)
+
+  async function dismiss() {
+    if (!canDismiss) return
+    if (
+      !confirm(
+        `Уволить ${member.name}?\n\nДанные, история, задачи и лиды останутся. Сотрудник пропадёт из KPI, отчётов и назначений, должность станет вакантной. Вход в CRM будет закрыт.`,
+      )
+    ) {
+      return
+    }
+    setBusy(true)
+    onMessage('', '')
+    try {
+      await updateDocument('users', member.id, {
+        isActive: false,
+        deactivatedAt: todayISO(),
+      })
+      const removed = await onClearedOpenTasks(member.id)
+      onMessage(
+        removed > 0
+          ? `Сотрудник уволен, должность вакантна. Убрано открытых задач по шаблонам: ${removed}`
+          : 'Сотрудник уволен, должность вакантна. Данные сохранены, в расчётах больше не участвует.',
+        '',
+      )
+    } catch (err) {
+      console.error(err)
+      onMessage('', err instanceof Error ? err.message : 'Не удалось уволить сотрудника')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function restore() {
+    setBusy(true)
+    onMessage('', '')
+    try {
+      await updateDocument('users', member.id, {
+        isActive: true,
+        deactivatedAt: null,
+      })
+      onMessage('Сотрудник снова в команде — KPI, отчёты и вход восстановлены', '')
+    } catch (err) {
+      console.error(err)
+      onMessage('', err instanceof Error ? err.message : 'Не удалось вернуть сотрудника')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <section
+      className={`space-y-3 rounded-xl border p-3 ${
+        active ? 'border-gray-200 bg-background' : 'border-amber-200 bg-amber-50'
+      }`}
+    >
+      <div className="flex items-start gap-2">
+        {active ? (
+          <UserMinus className="mt-0.5 h-4 w-4 shrink-0 text-muted" />
+        ) : (
+          <UserPlus className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+        )}
+        <div>
+          <h3 className="text-sm font-semibold text-text">
+            {active ? 'Увольнение' : 'Уволен · место вакантно'}
+          </h3>
+          <p className="mt-1 text-xs text-muted">
+            {active
+              ? 'Убрать из KPI, отчётов и ежедневных расчётов. Карточка, лиды и история не удаляются. Пока не добавите другого человека или не вернёте этого — должность свободна.'
+              : member.deactivatedAt
+                ? `С ${formatISODateShort(member.deactivatedAt)} не участвует в KPI и отчётах. Можно вернуть в команду.`
+                : 'Не участвует в KPI и отчётах. Можно вернуть в команду.'}
+          </p>
+        </div>
+      </div>
+      {active ? (
+        <Button
+          type="button"
+          size="sm"
+          variant="danger"
+          disabled={busy || !canDismiss}
+          onClick={() => void dismiss()}
+        >
+          {busy ? 'Сохранение...' : 'Уволить'}
+        </Button>
+      ) : (
+        <Button type="button" size="sm" disabled={busy} onClick={() => void restore()}>
+          {busy ? 'Сохранение...' : 'Вернуть в команду'}
+        </Button>
+      )}
+      {!canDismiss && active && (
+        <p className="text-xs text-muted">Себя уволить нельзя.</p>
+      )}
+    </section>
   )
 }
 

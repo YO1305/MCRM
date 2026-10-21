@@ -11,6 +11,7 @@ import {
 import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth'
 import { auth } from '@/firebase/config'
 import { signIn as firebaseSignIn, signOut as firebaseSignOut } from '@/firebase/auth'
+import { isEmploymentActive } from '@/hooks/useUsers'
 import { getDocument } from '@/firebase/firestore'
 import type { User } from '@/types/user.types'
 
@@ -189,6 +190,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (profileRequestId.current !== requestId) return
 
           if (doc) {
+            if (!isEmploymentActive(doc)) {
+              await firebaseSignOut()
+              if (profileRequestId.current !== requestId) return
+              setRealUser(null)
+              clearViewAs()
+              setLoading(false)
+              return
+            }
             setRealUser(normalizeProfile(firebaseUser, doc))
             setLoading(false)
             return
@@ -208,7 +217,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false)
       scheduleUpgrade(firebaseUser, requestId)
     },
-    [scheduleUpgrade],
+    [scheduleUpgrade, clearViewAs],
   )
 
   useEffect(() => {
@@ -269,9 +278,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const requestId = ++profileRequestId.current
       clearRetry()
       clearViewAs()
-      setRealUser(fallbackUser(cred.user))
-      setLoading(false)
-      void applyProfile(cred.user, requestId)
+      try {
+        const doc = await fetchProfileOnce(cred.user, 8000)
+        if (doc && !isEmploymentActive(doc)) {
+          await firebaseSignOut()
+          setRealUser(null)
+          setLoading(false)
+          const err = new Error('Сотрудник уволен. Вход закрыт')
+          ;(err as Error & { code?: string }).code = 'auth/employee-dismissed'
+          throw err
+        }
+        if (profileRequestId.current !== requestId) return
+        if (doc) {
+          setRealUser(normalizeProfile(cred.user, doc))
+        } else {
+          setRealUser(fallbackUser(cred.user))
+        }
+        setLoading(false)
+        void applyProfile(cred.user, requestId)
+      } catch (err) {
+        if ((err as { code?: string }).code === 'auth/employee-dismissed') throw err
+        setRealUser(fallbackUser(cred.user))
+        setLoading(false)
+        void applyProfile(cred.user, requestId)
+      }
     },
     [applyProfile, clearViewAs],
   )

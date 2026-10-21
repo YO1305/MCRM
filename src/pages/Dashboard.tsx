@@ -2,26 +2,38 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { where } from 'firebase/firestore'
 import { useAuth } from '@/hooks/useAuth'
+import { useUsers } from '@/hooks/useUsers'
 import { useClients } from '@/hooks/useClients'
 import { useAiTasks } from '@/hooks/useAiTasks'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { POSITION_LABELS } from '@/constants/positions'
 import { subscribeToCollection } from '@/firebase/firestore'
-import { runAiLeadAnalysisNow } from '@/firebase/callable'
+import { runAiLeadAnalysisNow, runActivityAnalysisUntilDone } from '@/firebase/callable'
 import type { Task } from '@/types/task.types'
 import { useAiConfig } from '@/hooks/useAiConfig'
 import { canSeeLeadActivity, countLeadActivity } from '@/utils/leadActivity'
+import { countGroqActivity, formatMonthNominative, monthBarWidth } from '@/utils/groqLeadActivity'
+import { getCurrentMonth, todayISO, toISODate } from '@/utils/dates'
 import { syncOpenedMonthsFromHistory } from '@/utils/syncOpenedMonths'
 import { clearStaleOverdueDeadlines } from '@/utils/clearStaleOverdues'
-import { todayISO, toISODate } from '@/utils/dates'
 
 export function Dashboard() {
   const { user, isAdmin } = useAuth()
+  const { users } = useUsers(isAdmin)
   const { clients } = useClients()
   const { tasks: aiTasks } = useAiTasks()
   const showActivity = isAdmin || canSeeLeadActivity(user)
   const { config: aiConfig } = useAiConfig()
+  const [analysisMonth, setAnalysisMonth] = useState(getCurrentMonth())
+  const groqCounts = useMemo(
+    () => countGroqActivity(clients, analysisMonth),
+    [clients, analysisMonth],
+  )
+  const groqTotal =
+    groqCounts.active + groqCounts.passive + groqCounts.paused + groqCounts.unlabeled
+  const [activityRunning, setActivityRunning] = useState(false)
+  const [activityProgress, setActivityProgress] = useState('')
   const activityCounts = useMemo(
     () =>
       countLeadActivity(clients, {
@@ -43,6 +55,12 @@ export function Dashboard() {
   }, [user, isAdmin])
 
   const today = todayISO()
+  const activeIds = useMemo(() => new Set(users.map((u) => u.id)), [users])
+
+  const visibleTasks = useMemo(() => {
+    if (!isAdmin) return tasks
+    return tasks.filter((t) => activeIds.has(t.assignedTo))
+  }, [isAdmin, tasks, activeIds])
 
   const aiOverview = useMemo(() => {
     if (!isAdmin) return null
@@ -60,7 +78,11 @@ export function Dashboard() {
       }
       return false
     }
-    const todays = aiTasks.filter((t) => isToday(t.generatedAt) || t.status === 'pending')
+    const todays = aiTasks.filter(
+      (t) =>
+        activeIds.has(t.assignedTo) &&
+        (isToday(t.generatedAt) || t.status === 'pending'),
+    )
     const byManager = new Map<string, { name: string; total: number; done: number }>()
     for (const t of todays) {
       const row = byManager.get(t.assignedTo) || {
@@ -76,24 +98,24 @@ export function Dashboard() {
     const total = rows.reduce((s, r) => s + r.total, 0)
     const done = rows.reduce((s, r) => s + r.done, 0)
     return { rows, total, done }
-  }, [aiTasks, isAdmin, today])
+  }, [aiTasks, isAdmin, today, activeIds])
 
   const stats = useMemo(() => {
-    const active = tasks.filter((t) => t.status !== 'done')
+    const active = visibleTasks.filter((t) => t.status !== 'done')
     return {
       active: active.length,
       today: active.filter((t) => t.dueDate === today).length,
       overdue: active.filter((t) => t.dueDate && t.dueDate < today).length,
-      done: tasks.filter((t) => t.status === 'done').length,
+      done: visibleTasks.filter((t) => t.status === 'done').length,
     }
-  }, [tasks, today])
+  }, [visibleTasks, today])
 
   const nextTasks = useMemo(
     () =>
-      tasks
+      visibleTasks
         .filter((t) => t.status !== 'done')
         .slice(0, 5),
-    [tasks],
+    [visibleTasks],
   )
 
   return (
@@ -247,6 +269,99 @@ export function Dashboard() {
               <p className="mt-1 text-2xl font-bold text-gray-600">{activityCounts.frozen}</p>
             </div>
           </div>
+        </Card>
+      )}
+
+      {isAdmin && (
+        <Card className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-lg font-semibold text-text">
+              Активность лидов — {formatMonthNominative(analysisMonth)} {analysisMonth.slice(0, 4)}
+            </h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={analysisMonth}
+                onChange={(e) => setAnalysisMonth(e.target.value)}
+                disabled={activityRunning}
+                className="rounded-lg border border-gray-200 bg-surface px-3 py-1.5 text-sm"
+              >
+                {Array.from({ length: 12 }, (_, i) => {
+                  const d = new Date()
+                  d.setDate(1)
+                  d.setMonth(d.getMonth() - i)
+                  const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+                  return (
+                    <option key={key} value={key}>
+                      {formatMonthNominative(key)} {key.slice(0, 4)}
+                    </option>
+                  )
+                })}
+              </select>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                disabled={activityRunning}
+                onClick={() => {
+                  void (async () => {
+                    setActivityRunning(true)
+                    setActivityProgress('Запускаю…')
+                    try {
+                      const result = await runActivityAnalysisUntilDone({
+                        month: analysisMonth,
+                        onProgress: (info) => {
+                          setActivityProgress(
+                            info.remaining > 0
+                              ? `Идёт анализ ${formatMonthNominative(info.month || analysisMonth)}: сделано ${info.processed}, в очереди ${info.remaining}`
+                              : `Дописываю… сделано ${info.processed}`,
+                          )
+                        },
+                      })
+                      setActivityProgress('')
+                      alert(
+                        result.remaining
+                          ? `Остановка: обработано ${result.processed || 0}, не успели ${result.remaining}. Нажмите ещё раз.`
+                          : `Готово за ${formatMonthNominative(result.month || analysisMonth)}: все ${result.processed || 0} карточек прогнаны` +
+                              (result.errors ? `, ошибок ${result.errors}` : ''),
+                      )
+                    } catch (err) {
+                      console.error(err)
+                      setActivityProgress('')
+                      alert(err instanceof Error ? err.message : 'Не удалось запустить анализ')
+                    } finally {
+                      setActivityRunning(false)
+                    }
+                  })()
+                }}
+              >
+                {activityRunning ? 'Анализ…' : 'Переанализировать месяц'}
+              </Button>
+            </div>
+          </div>
+          {activityProgress && <p className="text-sm text-secondary">{activityProgress}</p>}
+          <p className="text-xs text-muted">
+            Можно выбрать любой месяц. Кнопка считает по журналу Истории (без ИИ), поэтому не должна
+            упираться в лимит Groq. KPI за выбранный месяц тоже пересчитается. Если сеть оборвётся —
+            нажмите ещё раз, он продолжит с незакрытых карточек.
+          </p>
+          {(
+            [
+              ['Активные', groqCounts.active, 'bg-emerald-500'],
+              ['Пассивные', groqCounts.passive, 'bg-amber-500'],
+              ['На паузе', groqCounts.paused, 'bg-gray-400'],
+              ['Не оценены', groqCounts.unlabeled, 'bg-blue-300'],
+            ] as const
+          ).map(([label, value, bar]) => (
+            <div key={label}>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted">{label}</span>
+                <span className="font-semibold text-text">{value}</span>
+              </div>
+              <div className="mt-1 h-2 overflow-hidden rounded-full bg-background">
+                <div className={`h-full ${bar}`} style={{ width: monthBarWidth(value, groqTotal) }} />
+              </div>
+            </div>
+          ))}
         </Card>
       )}
 

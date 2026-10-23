@@ -81,6 +81,63 @@ export function getCountries(): CountryOption[] {
   return liveCountries && liveCountries.length > 0 ? liveCountries : COUNTRIES
 }
 
+const CYR_TO_LAT: Record<string, string> = {
+  а: 'A',
+  б: 'B',
+  в: 'V',
+  г: 'G',
+  д: 'D',
+  е: 'E',
+  ё: 'E',
+  ж: 'Z',
+  з: 'Z',
+  и: 'I',
+  й: 'I',
+  к: 'K',
+  л: 'L',
+  м: 'M',
+  н: 'N',
+  о: 'O',
+  п: 'P',
+  р: 'R',
+  с: 'S',
+  т: 'T',
+  у: 'U',
+  ф: 'F',
+  х: 'H',
+  ц: 'C',
+  ч: 'C',
+  ш: 'S',
+  щ: 'S',
+  ъ: '',
+  ы: 'Y',
+  ь: '',
+  э: 'E',
+  ю: 'U',
+  я: 'A',
+}
+
+/** Stable 2–4 letter code for a custom country name. */
+export function makeCountryCode(name: string, taken: Set<string>): string {
+  const letters = Array.from(name.trim().toLowerCase())
+    .map((ch) => {
+      if (/[a-z]/.test(ch)) return ch.toUpperCase()
+      return CYR_TO_LAT[ch] || ''
+    })
+    .join('')
+  let base = letters.slice(0, 3) || 'XX'
+  if (base.length < 2) base = (base + 'X').slice(0, 2)
+  const candidates = [base.slice(0, 2), base.slice(0, 3), base]
+  for (const code of candidates) {
+    if (code.length >= 2 && !taken.has(code)) return code
+  }
+  for (let i = 2; i < 100; i += 1) {
+    const code = `${base.slice(0, 2)}${i}`
+    if (!taken.has(code)) return code
+  }
+  return `C${Date.now().toString(36).slice(-4).toUpperCase()}`
+}
+
 export const FABRIC_TYPES: Record<string, string> = {
   cotton: 'Хлопок',
   satin: 'Сатин',

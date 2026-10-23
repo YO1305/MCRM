@@ -3,7 +3,12 @@ import { subscribeToCollection } from '@/firebase/firestore'
 import { positionRank } from '@/constants/positions'
 import type { User } from '@/types/user.types'
 
-export function useUsers(enabled = true) {
+export function isEmploymentActive(user: Pick<User, 'isActive'> | null | undefined): boolean {
+  return !!user && user.isActive !== false
+}
+
+export function useUsers(enabled = true, options?: { includeInactive?: boolean }) {
+  const includeInactive = options?.includeInactive === true
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(enabled)
   const [error, setError] = useState('')
@@ -23,9 +28,10 @@ export function useUsers(enabled = true) {
       (data) => {
         setUsers(
           data
-            .filter((u) => u.isActive !== false && u.name)
+            .filter((u) => u.name && (includeInactive || isEmploymentActive(u)))
             .sort(
               (a, b) =>
+                Number(isEmploymentActive(b)) - Number(isEmploymentActive(a)) ||
                 positionRank(a.position) - positionRank(b.position) ||
                 a.name.localeCompare(b.name, 'ru'),
             ),
@@ -39,7 +45,7 @@ export function useUsers(enabled = true) {
     )
 
     return unsubscribe
-  }, [enabled])
+  }, [enabled, includeInactive])
 
   return { users, loading, error }
 }

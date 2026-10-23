@@ -3,6 +3,7 @@ import { Expand, X } from 'lucide-react'
 import { useClients } from '@/hooks/useClients'
 import { useTasks } from '@/hooks/useTasks'
 import { useTaskTemplates } from '@/hooks/useTaskTemplates'
+import { useUsers } from '@/hooks/useUsers'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
@@ -103,11 +104,18 @@ export function Analytics() {
   const { clients, loading: clientsLoading } = useClients()
   const { tasks, loading: tasksLoading } = useTasks()
   const { templates, loading: tplLoading } = useTaskTemplates()
+  const { users } = useUsers(true)
+  const activeIds = useMemo(() => new Set(users.map((u) => u.id)), [users])
 
   const crm = useMemo(() => buildCrmAnalytics(clients, crmMonth), [clients, crmMonth])
   const tasksStats = useMemo(
-    () => buildTasksAnalytics(tasks, templates, taskMonth),
-    [tasks, templates, taskMonth],
+    () =>
+      buildTasksAnalytics(
+        tasks.filter((t) => activeIds.has(t.assignedTo)),
+        templates,
+        taskMonth,
+      ),
+    [tasks, templates, taskMonth, activeIds],
   )
 
   const loading = tab === 'crm' ? clientsLoading : tasksLoading || tplLoading
@@ -164,11 +172,12 @@ export function Analytics() {
           onMonthChange={setCrmMonth}
           months={monthOptions()}
           share={shareBtn}
+          activeIds={activeIds}
         />
       ) : (
         <TasksSection
           stats={tasksStats}
-          tasks={tasks}
+          tasks={tasks.filter((t) => activeIds.has(t.assignedTo))}
           month={taskMonth}
           onMonthChange={setTaskMonth}
           months={monthOptions()}
@@ -453,6 +462,7 @@ function CrmSection({
   onMonthChange,
   months,
   share,
+  activeIds,
 }: {
   crm: ReturnType<typeof buildCrmAnalytics>
   clients: Client[]
@@ -460,6 +470,7 @@ function CrmSection({
   onMonthChange: (v: string) => void
   months: { value: string; label: string }[]
   share?: ReactNode
+  activeIds: Set<string>
 }) {
   const [funnelFull, setFunnelFull] = useState(false)
   const activityMonth = crm.activityMonth
@@ -473,6 +484,12 @@ function CrmSection({
     r.unlabeled,
     formatMoney(r.sum),
   ]
+  const leadRows = crm.leadRows.filter(
+    (r) => r.id === 'unassigned' || activeIds.has(r.id),
+  )
+  const salesRows = crm.salesRows.filter(
+    (r) => r.id === 'unknown' || activeIds.has(r.id),
+  )
 
   return (
     <div className="space-y-4">
@@ -544,7 +561,7 @@ function CrmSection({
         title="По менеджерам лидов"
         hint="У кого сколько лидов и какая активность"
         columns={['Менеджер', 'Лидов', 'Актив', 'Пассив', 'Пауза', 'Без метки', 'Сумма']}
-        rows={crm.leadRows.map((r) => apRow(r.name, r))}
+        rows={leadRows.map((r) => apRow(r.name, r))}
         detailExtra={
           <ClientsDetailList
             title="Лиды по менеджерам"
@@ -561,7 +578,7 @@ function CrmSection({
         title="Передано менеджерам продаж"
         hint="Кому переданы лиды из CRM"
         columns={['Менеджер продаж', 'Лидов', 'Актив', 'Пассив', 'Пауза', 'Без метки', 'Сумма']}
-        rows={crm.salesRows.map((r) => apRow(r.name, r))}
+        rows={salesRows.map((r) => apRow(r.name, r))}
         detailExtra={
           <ClientsDetailList
             title="Переданные в продажи"

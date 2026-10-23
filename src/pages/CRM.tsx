@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Brain, LayoutGrid, List, Plus, Search } from 'lucide-react'
+import { Brain, LayoutGrid, List, Plus, Search, SlidersHorizontal, X } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { useRole } from '@/hooks/useRole'
 import { useClients } from '@/hooks/useClients'
@@ -13,15 +13,23 @@ import { ClientKanban } from '@/components/crm/ClientKanban'
 import { ClientListView } from '@/components/crm/ClientListView'
 import { ClientDetail } from '@/components/crm/ClientDetail'
 import { CrmAiTasksPanel } from '@/components/crm/CrmAiTasksPanel'
+import {
+  CrmFiltersSheet,
+  crmFilterChips,
+  crmFilterCount,
+  type CrmFilterValues,
+} from '@/components/crm/CrmFiltersSheet'
 import { type ClientStage, stageIsClosed, stageIsWon } from '@/constants/clientStages'
 import { useClientStages } from '@/hooks/useClientStages'
 import { POSITION_LABELS } from '@/constants/positions'
+import { countryName } from '@/constants/leadProducts'
+import { useOptionList } from '@/hooks/useOptionList'
 import { todayISO, getCurrentMonth } from '@/utils/dates'
 import { clientActionDeadline } from '@/utils/clientWork'
 import type { ActivityStatus, Client } from '@/types/client.types'
 import type { GroqActivityLabel } from '@/types/aiActivity.types'
 import { canSeeLeadActivity, resolveActivityStatus } from '@/utils/leadActivity'
-import { effectiveGroqActivity, kpiMonthIsCurrent } from '@/utils/groqLeadActivity'
+import { effectiveGroqActivity } from '@/utils/groqLeadActivity'
 import { useAiConfig } from '@/hooks/useAiConfig'
 
 type CrmSection = 'funnel' | 'ai'
@@ -53,6 +61,7 @@ export function CRM() {
   const canManage = canAccess('crm')
   const { users, loading: usersLoading } = useUsers(canManage && isAdmin)
   const { pipeline } = useClientStages()
+  const sourceList = useOptionList('client_source')
   const { pendingCount } = useAiTasks()
 
   const [section, setSection] = useState<CrmSection>('funnel')
@@ -63,7 +72,9 @@ export function CRM() {
   const [waitFilter, setWaitFilter] = useState('all')
   const [activityFilter, setActivityFilter] = useState<ActivityStatus | 'all'>('all')
   const [groqFilter, setGroqFilter] = useState<GroqActivityLabel | 'all'>('all')
-  const [kpiFilter, setKpiFilter] = useState<'all' | 'yes' | 'no'>('all')
+  const [countryFilter, setCountryFilter] = useState('all')
+  const [sourceFilter, setSourceFilter] = useState('all')
+  const [filtersOpen, setFiltersOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
@@ -128,6 +139,58 @@ export function CRM() {
     return [...set].sort((a, b) => a.localeCompare(b, 'ru'))
   }, [clients])
 
+  const countryOptions = useMemo(() => {
+    const set = new Set<string>()
+    for (const c of clients) {
+      if (c.country) set.add(c.country)
+    }
+    return [...set]
+      .sort((a, b) => countryName(a).localeCompare(countryName(b), 'ru'))
+      .map((code) => ({ value: code, label: countryName(code) }))
+  }, [clients])
+
+  const sourceOptions = useMemo(() => {
+    const set = new Set<string>()
+    for (const c of clients) {
+      if (c.source) set.add(c.source)
+    }
+    return [...set]
+      .sort((a, b) =>
+        sourceList.labelOf(a).localeCompare(sourceList.labelOf(b), 'ru'),
+      )
+      .map((value) => ({ value, label: sourceList.labelOf(value) }))
+  }, [clients, sourceList])
+
+  const filterValues: CrmFilterValues = {
+    assigneeId: assigneeFilter,
+    country: countryFilter,
+    source: sourceFilter,
+    groq: groqFilter,
+    activity: activityFilter,
+    waitStatus: waitFilter,
+    stage: stageFilter,
+  }
+
+  const emptyFilters: CrmFilterValues = {
+    assigneeId: 'all',
+    country: 'all',
+    source: 'all',
+    groq: 'all',
+    activity: 'all',
+    waitStatus: 'all',
+    stage: 'all',
+  }
+
+  function applyFilters(next: CrmFilterValues) {
+    setAssigneeFilter(next.assigneeId)
+    setCountryFilter(next.country)
+    setSourceFilter(next.source)
+    setGroqFilter(next.groq)
+    setActivityFilter(next.activity)
+    setWaitFilter(next.waitStatus)
+    setStageFilter(next.stage)
+  }
+
   const scoped = useMemo(() => {
     let list = clients
     if (isAdmin && assigneeFilter !== 'all') {
@@ -181,12 +244,8 @@ export function CRM() {
         const { label } = effectiveGroqActivity(c, month)
         if (label !== groqFilter) return false
       }
-      if (isAdmin && kpiFilter !== 'all') {
-        const month = getCurrentMonth()
-        if (!kpiMonthIsCurrent(c, month)) return false
-        if (kpiFilter === 'yes' && c.kpiQualified !== true) return false
-        if (kpiFilter === 'no' && c.kpiQualified !== false) return false
-      }
+      if (countryFilter !== 'all' && (c.country || '') !== countryFilter) return false
+      if (sourceFilter !== 'all' && c.source !== sourceFilter) return false
 
       const deadline = clientActionDeadline(c)
       const inWork = !stageIsWon(c.stage) && !stageIsClosed(c.stage)
@@ -205,7 +264,7 @@ export function CRM() {
           return true
       }
     })
-  }, [scoped, search, stageFilter, waitFilter, activityFilter, groqFilter, kpiFilter, showActivity, isAdmin, activityThresholds, scope, today])
+  }, [scoped, search, stageFilter, waitFilter, activityFilter, groqFilter, countryFilter, sourceFilter, showActivity, isAdmin, activityThresholds, scope, today])
 
   async function handleStageChange(
     clientId: string,
@@ -343,152 +402,59 @@ export function CRM() {
         </p>
       )}
 
-      {showActivity && (
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[11px] font-medium uppercase tracking-wide text-muted">
-            Срок лида
-          </span>
-          {(
-            [
-              ['all', 'Все'],
-              ['new', 'Новые'],
-              ['active', 'Активные'],
-              ['critical', 'Критические'],
-              ['frozen', 'Замороженные'],
-            ] as const
-          ).map(([key, label]) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setActivityFilter(key)}
-              className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-                activityFilter === key
-                  ? 'bg-secondary text-white'
-                  : 'bg-surface text-muted shadow-sm hover:text-text'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="relative min-w-0 flex-1">
+          <Search className="pointer-events-none absolute left-3 top-[13px] z-10 h-4 w-4 text-muted" />
+          <input
+            name="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Поиск: имя, телефон, компания..."
+            className="w-full rounded-lg border border-gray-200 bg-surface py-2.5 pl-9 pr-3 text-sm text-text outline-none placeholder:text-muted focus:border-secondary focus:ring-2 focus:ring-secondary/20"
+          />
         </div>
-      )}
-
-      {isAdmin && (
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[11px] font-medium uppercase tracking-wide text-muted">
-            Работа по лиду
-          </span>
-          {(
-            [
-              ['all', 'Все'],
-              ['active', 'Активные'],
-              ['passive', 'Пассивные'],
-              ['paused', 'На паузе'],
-            ] as const
-          ).map(([key, label]) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setGroqFilter(key)}
-              className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-                groqFilter === key
-                  ? 'bg-emerald-700 text-white'
-                  : 'bg-surface text-muted shadow-sm hover:text-text'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-          <span className="text-[11px] text-muted">
-            С 1-го числа не обнуляется: пока в новом месяце пусто, остаётся прошлый месяц.
-          </span>
-        </div>
-      )}
-
-      {isAdmin && (
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[11px] font-medium uppercase tracking-wide text-muted">
-            KPI
-          </span>
-          {(
-            [
-              ['all', 'Все'],
-              ['yes', 'KPI лиды'],
-              ['no', 'Не в KPI'],
-            ] as const
-          ).map(([key, label]) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setKpiFilter(key)}
-              className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-                kpiFilter === key
-                  ? 'bg-emerald-700 text-white'
-                  : 'bg-surface text-muted shadow-sm hover:text-text'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {isAdmin && teamUsers.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => setAssigneeFilter('all')}
-            className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
-              assigneeFilter === 'all'
-                ? 'bg-secondary text-white'
-                : 'bg-surface text-muted shadow-sm hover:text-text'
-            }`}
-          >
-            Все менеджеры
-          </button>
-          {teamUsers.map((u) => (
-            <button
-              key={u.id}
-              type="button"
-              onClick={() => setAssigneeFilter(u.id)}
-              className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
-                assigneeFilter === u.id
-                  ? 'bg-secondary text-white'
-                  : 'bg-surface text-muted shadow-sm hover:text-text'
-              }`}
-            >
-              {u.name}
-            </button>
-          ))}
-        </div>
-      )}
-
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-[13px] z-10 h-4 w-4 text-muted" />
-        <input
-          name="search"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Поиск: имя, телефон, компания..."
-          className="w-full rounded-lg border border-gray-200 bg-surface py-2.5 pl-9 pr-3 text-sm text-text outline-none placeholder:text-muted focus:border-secondary focus:ring-2 focus:ring-secondary/20"
-        />
+        <Button
+          type="button"
+          variant={crmFilterCount(filterValues) ? 'secondary' : 'ghost'}
+          className="shrink-0 border border-gray-200 bg-surface text-text hover:bg-background"
+          onClick={() => setFiltersOpen(true)}
+        >
+          <SlidersHorizontal className="h-4 w-4" />
+          Фильтры
+          {crmFilterCount(filterValues) > 0 && (
+            <span className="rounded-md bg-secondary px-1.5 py-0.5 text-[11px] font-semibold text-white">
+              {crmFilterCount(filterValues)}
+            </span>
+          )}
+        </Button>
       </div>
 
-      {waitOptions.length > 0 && (
-        <div className="flex flex-col gap-1.5 sm:max-w-xs">
-          <label className="text-xs font-medium text-muted">Статус ожидания</label>
-          <select
-            value={waitFilter}
-            onChange={(e) => setWaitFilter(e.target.value)}
-            className="rounded-lg border border-gray-200 bg-surface px-3 py-2 text-sm outline-none focus:border-secondary"
+      {crmFilterCount(filterValues) > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          {crmFilterChips(filterValues, {
+            managers: teamUsers,
+            sources: sourceOptions,
+            isAdmin,
+            showActivity,
+            stages: pipeline,
+          }).map((chip) => (
+            <button
+              key={chip.key}
+              type="button"
+              onClick={() => applyFilters({ ...filterValues, [chip.key]: 'all' })}
+              className="inline-flex items-center gap-1 rounded-full bg-secondary/10 px-2.5 py-1 text-xs font-medium text-secondary"
+            >
+              {chip.label}
+              <X className="h-3 w-3" />
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => applyFilters(emptyFilters)}
+            className="text-xs font-medium text-muted hover:text-text"
           >
-            <option value="all">Все статусы</option>
-            {waitOptions.map((status) => (
-              <option key={status} value={status}>
-                {status}
-              </option>
-            ))}
-          </select>
+            Сбросить
+          </button>
         </div>
       )}
 
@@ -517,36 +483,6 @@ export function CRM() {
           </button>
         ))}
       </div>
-
-      {view === 'list' && (
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => setStageFilter('all')}
-            className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
-              stageFilter === 'all'
-                ? 'bg-secondary text-white'
-                : 'bg-surface text-muted shadow-sm'
-            }`}
-          >
-            Все этапы
-          </button>
-          {pipeline.map((stage) => (
-            <button
-              key={stage.value}
-              type="button"
-              onClick={() => setStageFilter(stage.value)}
-              className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
-                stageFilter === stage.value
-                  ? 'bg-secondary text-white'
-                  : 'bg-surface text-muted shadow-sm'
-              }`}
-            >
-              {stage.label}
-            </button>
-          ))}
-        </div>
-      )}
 
       {error && (
         <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-danger">{error}</div>
@@ -619,6 +555,22 @@ export function CRM() {
         onSetVisit={setVisit}
         onLogCall={logCall}
         onLogSamples={logSamplesSent}
+      />
+
+      <CrmFiltersSheet
+        open={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        values={filterValues}
+        onChange={applyFilters}
+        onReset={() => applyFilters(emptyFilters)}
+        isAdmin={isAdmin}
+        showActivity={showActivity}
+        managers={teamUsers}
+        countries={countryOptions}
+        sources={sourceOptions}
+        waitOptions={waitOptions}
+        stages={pipeline}
+        showStage={view === 'list'}
       />
 
       <CreateClientModal

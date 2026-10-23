@@ -129,6 +129,18 @@ service cloud.firestore {
     match /app_option_lists/{listId} {
       allow read: if isSignedIn();
       allow create, update, delete: if isAdmin();
+      // Anyone signed in can add a missing country from the CRM card.
+      // They may grow the list, not shrink it (admin still has full write).
+      allow create: if isSignedIn()
+        && listId == 'countries'
+        && request.resource.data.options is list;
+      allow update: if isSignedIn()
+        && listId == 'countries'
+        && request.resource.data.options is list
+        && (
+          !('options' in resource.data)
+          || request.resource.data.options.size() >= resource.data.options.size()
+        );
     }
 
     match /client_history/{historyId} {

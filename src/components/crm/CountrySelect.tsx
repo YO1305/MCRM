@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, Search } from 'lucide-react'
+import { ChevronDown, Plus, Search } from 'lucide-react'
 import { countryName, isEuropeanCountry } from '@/constants/leadProducts'
 import { useCountriesList } from '@/hooks/useCountries'
 
@@ -18,9 +18,11 @@ export function CountrySelect({
   required,
   showEuropeHint = true,
 }: CountrySelectProps) {
-  const { countries } = useCountriesList()
+  const { countries, addCountry } = useCountriesList()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
+  const [adding, setAdding] = useState(false)
+  const [addError, setAddError] = useState('')
   const rootRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -57,6 +59,34 @@ export function CountrySelect({
     onChange(code)
     setOpen(false)
     setQuery('')
+    setAddError('')
+  }
+
+  const typed = query.trim()
+  const exactMatch = useMemo(() => {
+    if (typed.length < 2) return null
+    const q = typed.toLowerCase()
+    return (
+      countries.find((c) => c.name.toLowerCase() === q || c.code.toLowerCase() === q) ||
+      null
+    )
+  }, [typed, countries])
+
+  const canAdd = typed.length >= 2 && !exactMatch
+
+  async function addTypedCountry() {
+    if (!canAdd || adding) return
+    setAdding(true)
+    setAddError('')
+    try {
+      const created = await addCountry(typed)
+      pick(created.code)
+    } catch (err) {
+      console.error(err)
+      setAddError(err instanceof Error ? err.message : 'Не удалось добавить страну')
+    } finally {
+      setAdding(false)
+    }
   }
 
   const selectedLabel = countryName(value)
@@ -98,38 +128,64 @@ export function CountrySelect({
                 ref={inputRef}
                 type="search"
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Поиск: Азербайджан, AZ..."
+                onChange={(e) => {
+                  setQuery(e.target.value)
+                  setAddError('')
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    if (exactMatch) pick(exactMatch.code)
+                    else if (filtered.length === 1) pick(filtered[0].code)
+                    else void addTypedCountry()
+                  }
+                }}
+                placeholder="Поиск или новая страна..."
                 className="w-full bg-transparent text-sm outline-none placeholder:text-muted"
               />
             </div>
             <ul className="max-h-52 overflow-y-auto py-1">
-              {filtered.length === 0 ? (
+              {filtered.map((c) => {
+                const active = c.code === value
+                return (
+                  <li key={c.code}>
+                    <button
+                      type="button"
+                      onClick={() => pick(c.code)}
+                      className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm ${
+                        active
+                          ? 'bg-secondary/10 font-medium text-secondary'
+                          : 'text-text hover:bg-background'
+                      }`}
+                    >
+                      <span>{c.name}</span>
+                      {c.europe && (
+                        <span className="text-[11px] text-muted">Европа</span>
+                      )}
+                    </button>
+                  </li>
+                )
+              })}
+              {filtered.length === 0 && !canAdd && (
                 <li className="px-3 py-2 text-sm text-muted">Ничего не найдено</li>
-              ) : (
-                filtered.map((c) => {
-                  const active = c.code === value
-                  return (
-                    <li key={c.code}>
-                      <button
-                        type="button"
-                        onClick={() => pick(c.code)}
-                        className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm ${
-                          active
-                            ? 'bg-secondary/10 font-medium text-secondary'
-                            : 'text-text hover:bg-background'
-                        }`}
-                      >
-                        <span>{c.name}</span>
-                        {c.europe && (
-                          <span className="text-[11px] text-muted">Европа</span>
-                        )}
-                      </button>
-                    </li>
-                  )
-                })
+              )}
+              {canAdd && (
+                <li>
+                  <button
+                    type="button"
+                    disabled={adding}
+                    onClick={() => void addTypedCountry()}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-secondary hover:bg-secondary/10"
+                  >
+                    <Plus className="h-4 w-4 shrink-0" />
+                    {adding ? 'Сохраняю…' : `Добавить «${typed}»`}
+                  </button>
+                </li>
               )}
             </ul>
+            {addError && (
+              <p className="border-t border-gray-100 px-3 py-2 text-xs text-danger">{addError}</p>
+            )}
           </div>
         )}
       </div>

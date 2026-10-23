@@ -1,4 +1,14 @@
-# React + TypeScript + Vite
+# Bahmal CRM
+
+Внутренняя CRM (React + TypeScript + Vite + Firebase).
+
+## Каталог Бахмал
+
+Отдельная инициатива — **интерактивный каталог**: документация и ТЗ в каталоге [`katalog-bahmal/`](./katalog-bahmal/README.md).
+
+---
+
+## React + TypeScript + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
 

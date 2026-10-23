@@ -66,13 +66,14 @@ export function useCountriesList() {
   }, [user])
 
   function toDocOptions(list: CountryOption[]) {
+    // Firestore rejects `undefined` in nested maps. Always write booleans.
     return list.map((c) => ({
       value: c.code,
       label: c.name,
       code: c.code,
       name: c.name,
-      europe: c.europe || undefined,
-      builtin: c.builtin || undefined,
+      europe: Boolean(c.europe),
+      builtin: Boolean(c.builtin),
     }))
   }
 

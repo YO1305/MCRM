@@ -316,6 +316,32 @@ export function useTaskTemplates(userId?: string | null) {
     return removeOrphanTemplateTasks(employeeId, new Set())
   }
 
+  /**
+   * Remove leftover open daily/template tasks from past days. Keeps today's copies
+   * and any task created by hand (no sourceTemplateId).
+   */
+  async function clearPastGeneratedTasks(employeeId: string): Promise<number> {
+    if (!user) throw new Error('Not authenticated')
+    if (!isAdmin) throw new Error('Только админ')
+    const today = todayISO()
+    const snap = await getDocs(
+      query(collection(db, 'tasks'), where('assignedTo', '==', employeeId)),
+    )
+    const toDelete = snap.docs.filter((d) => {
+      const data = d.data()
+      if (!data.sourceTemplateId) return false
+      if (!isOpenGeneratedTask(data.status)) return false
+      const gen = typeof data.generatedForDate === 'string' ? data.generatedForDate : ''
+      const due = typeof data.dueDate === 'string' ? data.dueDate : ''
+      const start = typeof data.startDate === 'string' ? data.startDate : ''
+      return gen !== today && due !== today && start !== today
+    })
+    for (const docSnap of toDelete) {
+      await removeDocument('tasks', docSnap.id)
+    }
+    return toDelete.length
+  }
+
   return {
     templates,
     loading,
@@ -328,5 +354,6 @@ export function useTaskTemplates(userId?: string | null) {
     restartDailyTasks,
     dedupeTodayTasks,
     clearOpenGeneratedTasks,
+    clearPastGeneratedTasks,
   }
 }

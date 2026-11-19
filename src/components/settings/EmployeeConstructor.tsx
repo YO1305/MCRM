@@ -108,6 +108,7 @@ export function EmployeeConstructor({ member, onClose }: EmployeeConstructorProp
     restartDailyTasks,
     dedupeTodayTasks,
     clearOpenGeneratedTasks,
+    clearPastGeneratedTasks,
   } = useTaskTemplates(member.id)
 
   const [draft, setDraft] = useState<Draft>(emptyDraft)
@@ -120,6 +121,7 @@ export function EmployeeConstructor({ member, onClose }: EmployeeConstructorProp
   const [filter, setFilter] = useState<'all' | 'daily' | 'other'>('all')
   const [syncing, setSyncing] = useState(false)
   const [restarting, setRestarting] = useState(false)
+  const [clearingPast, setClearingPast] = useState(false)
 
   useEffect(() => {
     setSections(Array.isArray(member.enabledSections) ? member.enabledSections : defaults)
@@ -292,7 +294,8 @@ export function EmployeeConstructor({ member, onClose }: EmployeeConstructorProp
               <p className="mt-1 text-xs text-muted">
                 Ежедневные и по расписанию остаются здесь навсегда. Их можно менять, выключать
                 или удалять. Каждый день CRM сама создаёт задачу сотруднику из активного
-                шаблона. Удаление/выключение сразу убирает открытые задачи по этому шаблону.
+                шаблона. Если человек был в отпуске и задачи накопились — «Убрать старые
+                ежедневные» сотрёт прошлые дни, сегодняшние оставит.
               </p>
               {isRecurringTasksPaused(member) && (
                 <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">
@@ -384,6 +387,42 @@ export function EmployeeConstructor({ member, onClose }: EmployeeConstructorProp
                 }}
               >
                 {restarting ? 'Перезапуск...' : 'Перезапустить на сегодня'}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="danger"
+                disabled={clearingPast || loading}
+                onClick={() => {
+                  if (
+                    !confirm(
+                      `Убрать у ${member.name} все открытые ежедневные задачи, кроме сегодняшних?\n\nНакопившиеся за отпуск / прошлые дни исчезнут. Сегодняшние и задачи, созданные вручную, останутся.`,
+                    )
+                  ) {
+                    return
+                  }
+                  setClearingPast(true)
+                  setError('')
+                  void clearPastGeneratedTasks(member.id)
+                    .then((n) => {
+                      setOkMsg(
+                        n > 0
+                          ? `Убрано старых ежедневных задач: ${n}. Сегодняшние на месте.`
+                          : 'Старых открытых ежедневных задач нет',
+                      )
+                    })
+                    .catch((err) => {
+                      console.error(err)
+                      setError(
+                        err instanceof Error
+                          ? err.message
+                          : 'Не удалось очистить старые задачи',
+                      )
+                    })
+                    .finally(() => setClearingPast(false))
+                }}
+              >
+                {clearingPast ? 'Очистка...' : 'Убрать старые ежедневные'}
               </Button>
             </div>
 

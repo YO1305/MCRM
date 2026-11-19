@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { MapPin, Plus, Store } from 'lucide-react'
+import { Calculator, MapPin, Plus, Store } from 'lucide-react'
 import { ShopForm } from '@/components/shops/ShopForm'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
@@ -35,10 +35,18 @@ export function Shops() {
             Сеть магазинов: карточка, менеджеры, ежедневный Excel по продажам, ABC и маржа.
           </p>
         </div>
-        <Button type="button" onClick={() => setCreating((v) => !v)}>
-          <Plus size={16} />
-          {creating ? 'Скрыть форму' : 'Создать магазин'}
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Link to="/shops/calculator">
+            <Button type="button" variant="secondary">
+              <Calculator size={16} />
+              Калькулятор цен
+            </Button>
+          </Link>
+          <Button type="button" onClick={() => setCreating((v) => !v)}>
+            <Plus size={16} />
+            {creating ? 'Скрыть форму' : 'Создать магазин'}
+          </Button>
+        </div>
       </div>
 
       {creating && (

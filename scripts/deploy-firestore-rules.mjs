@@ -47,6 +47,9 @@ const content = readFileSync(rulesPath, 'utf8')
 if (!content.includes('match /shops/{id}')) {
   fail('firestore.rules без раздела shops — отказ')
 }
+if (!content.includes('match /shop_calculator_settings/{id}')) {
+  fail('firestore.rules без калькулятора цен — отказ')
+}
 
 const client = new JWT({
   email: sa.client_email,

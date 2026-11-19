@@ -387,5 +387,11 @@ service cloud.firestore {
     match /shop_stock/{id} {
       allow read, write: if isSignedIn() && exists(userPath()) && canManageShops();
     }
+
+    match /shop_calculator_settings/{id} {
+      allow read: if isSignedIn() && exists(userPath()) && canManageShops();
+      allow create, update: if isAdmin();
+      allow delete: if isAdmin();
+    }
   }
 }

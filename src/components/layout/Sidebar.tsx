@@ -18,6 +18,7 @@ import {
   FileWarning,
   BookUser,
   ShoppingBag,
+  Calculator,
   X,
 } from 'lucide-react'
 import { useRole } from '@/hooks/useRole'
@@ -29,6 +30,7 @@ interface NavItem {
   label: string
   icon: typeof LayoutDashboard
   section: AppSection
+  end?: boolean
 }
 
 const NAV_ITEMS: NavItem[] = [
@@ -40,7 +42,8 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/kpi', label: 'KPI', icon: BarChart3, section: 'kpi' },
   { to: '/design', label: 'Дизайн', icon: Palette, section: 'design' },
   { to: '/catalogue', label: 'Каталог и КП', icon: BookOpen, section: 'catalogue' },
-  { to: '/shops', label: 'Магазины', icon: ShoppingBag, section: 'shops' },
+  { to: '/shops', label: 'Магазины', icon: ShoppingBag, section: 'shops', end: true },
+  { to: '/shops/calculator', label: 'Калькулятор', icon: Calculator, section: 'shops' },
   { to: '/showroom', label: 'Шоурум', icon: Store, section: 'showroom' },
   { to: '/labels', label: 'Печать бирок', icon: Tag, section: 'labels' },
   { to: '/smm', label: 'Контроль СММ', icon: Megaphone, section: 'smm' },
@@ -98,7 +101,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
             <NavLink
               key={item.to}
               to={item.to}
-              end={item.to === '/'}
+              end={item.end || item.to === '/'}
               onClick={onClose}
               className={({ isActive }) =>
                 `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${

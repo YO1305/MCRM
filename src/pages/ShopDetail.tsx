@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Download, MapPin, Trash2, Upload } from 'lucide-react'
+import { ArrowLeft, Calculator, Download, MapPin, Trash2, Upload } from 'lucide-react'
 import { ShopAbcTable } from '@/components/shops/ShopAbcTable'
 import { ShopAbcDonut, ShopSalesBars } from '@/components/shops/ShopCharts'
 import { ShopForm } from '@/components/shops/ShopForm'
@@ -210,10 +210,18 @@ export function ShopDetail() {
             <p className="mt-1 text-sm text-muted">Локация не указана</p>
           )}
         </div>
-        <Button type="button" variant="danger" size="sm" disabled={busy} onClick={handleDeleteShop}>
-          <Trash2 size={14} />
-          Удалить
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Link to="/shops/calculator">
+            <Button type="button" variant="secondary" size="sm">
+              <Calculator size={14} />
+              Калькулятор
+            </Button>
+          </Link>
+          <Button type="button" variant="danger" size="sm" disabled={busy} onClick={handleDeleteShop}>
+            <Trash2 size={14} />
+            Удалить
+          </Button>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-1 rounded-xl border border-gray-100 bg-surface p-1">

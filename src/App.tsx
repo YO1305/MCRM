@@ -31,6 +31,9 @@ const AiSettings = lazy(() =>
 )
 const Catalogue = lazy(() => import('@/pages/Catalogue').then((m) => ({ default: m.Catalogue })))
 const Shops = lazy(() => import('@/pages/Shops').then((m) => ({ default: m.Shops })))
+const ShopPriceCalculator = lazy(() =>
+  import('@/pages/ShopPriceCalculator').then((m) => ({ default: m.ShopPriceCalculator })),
+)
 const ShopDetail = lazy(() => import('@/pages/ShopDetail').then((m) => ({ default: m.ShopDetail })))
 const PublicCatalogue = lazy(() =>
   import('@/pages/PublicCatalogue').then((m) => ({ default: m.PublicCatalogue })),
@@ -93,6 +96,7 @@ export default function App() {
 
                 <Route element={<SectionRoute section="shops" />}>
                   <Route path="/shops" element={<Shops />} />
+                  <Route path="/shops/calculator" element={<ShopPriceCalculator />} />
                   <Route path="/shops/:id" element={<ShopDetail />} />
                 </Route>
 

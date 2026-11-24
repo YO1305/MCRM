@@ -7,6 +7,7 @@ import {
   removeDocument,
 } from '@/firebase/firestore'
 import { useAuth } from '@/hooks/useAuth'
+import { transferLeadManager } from '@/utils/transferLeadManager'
 import type { Client, ClientInput, ProductKind, SamplesShipmentInput } from '@/types/client.types'
 import type { ClientStage } from '@/constants/clientStages'
 import {
@@ -61,7 +62,7 @@ const emptySales = {
 }
 
 export function useClients() {
-  const { user, isAdmin } = useAuth()
+  const { user, isAdmin, isRealAdmin } = useAuth()
   const [clients, setClients] = useState<Client[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -662,6 +663,14 @@ export function useClients() {
     await removeDocument('clients', clientId)
   }
 
+  async function transferClient(clientId: string, to: { id: string; name: string }) {
+    if (!user) throw new Error('Not authenticated')
+    if (!isRealAdmin) throw new Error('Передавать лиды может только админ')
+    const client = clients.find((c) => c.id === clientId)
+    if (!client) throw new Error('Лид не найден')
+    await transferLeadManager(client, to)
+  }
+
   return {
     clients,
     loading,
@@ -679,5 +688,6 @@ export function useClients() {
     logCall,
     logSamplesSent,
     deleteClient,
+    transferClient,
   }
 }

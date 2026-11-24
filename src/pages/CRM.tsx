@@ -29,7 +29,7 @@ type ViewMode = 'list' | 'kanban'
 type ScopeFilter = 'active' | 'today' | 'overdue' | 'deal' | 'archive' | 'all'
 
 export function CRM() {
-  const { user, isAdmin } = useAuth()
+  const { user, isAdmin, isRealAdmin } = useAuth()
   const { canAccess } = useRole()
   const {
     clients,
@@ -48,6 +48,7 @@ export function CRM() {
     logCall,
     logSamplesSent,
     deleteClient,
+    transferClient,
   } = useClients()
   const { requestDeletion, requests: deletionRequests } = useDeletionRequests()
   const canManage = canAccess('crm')
@@ -619,6 +620,7 @@ export function CRM() {
         onSetVisit={setVisit}
         onLogCall={logCall}
         onLogSamples={logSamplesSent}
+        onTransferManager={isRealAdmin ? transferClient : undefined}
       />
 
       <CreateClientModal

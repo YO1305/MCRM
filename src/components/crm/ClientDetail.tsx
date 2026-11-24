@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Check, MapPin, Package, Phone, Plus, Trash2, X } from 'lucide-react'
+import { Check, MapPin, Package, Phone, Plus, Trash2, UserPlus, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Textarea } from '@/components/ui/Textarea'
@@ -7,6 +7,8 @@ import { Badge } from '@/components/ui/Badge'
 import { useAuth } from '@/hooks/useAuth'
 import { useClientHistory } from '@/hooks/useClientHistory'
 import { useDepartments } from '@/hooks/useDepartments'
+import { useUsers } from '@/hooks/useUsers'
+import { userCanReceiveCrmLeads } from '@/utils/transferLeadManager'
 import type {
   Client,
   ClientSource,
@@ -107,6 +109,7 @@ interface ClientDetailProps {
   ) => Promise<void>
   onLogCall: (clientId: string, text: string) => Promise<void>
   onLogSamples?: (clientId: string, shipment: SamplesShipmentInput) => Promise<void>
+  onTransferManager?: (clientId: string, to: { id: string; name: string }) => Promise<void>
 }
 
 function formatTime(value: unknown) {
@@ -154,9 +157,11 @@ export function ClientDetail({
   onSetVisit,
   onLogCall,
   onLogSamples,
+  onTransferManager,
 }: ClientDetailProps) {
-  const { user, isAdmin } = useAuth()
+  const { user, isAdmin, isRealAdmin } = useAuth()
   const { departments } = useDepartments()
+  const { users: teamUsers } = useUsers(!!isRealAdmin && !!onTransferManager)
   const { entries, loading: historyLoading } = useClientHistory(client?.id || null)
   const sourceList = useOptionList('client_source')
   const { pipeline } = useClientStages()
@@ -207,6 +212,10 @@ export function ClientDetail({
   const [sampleNote, setSampleNote] = useState('')
   const [sampleRows, setSampleRows] = useState<SampleItem[]>([{ name: '', params: '' }])
   const [savingSamples, setSavingSamples] = useState(false)
+  const [showTransfer, setShowTransfer] = useState(false)
+  const [transferToId, setTransferToId] = useState('')
+  const [transferring, setTransferring] = useState(false)
+  const [transferError, setTransferError] = useState('')
 
   useEffect(() => {
     if (!client) return
@@ -252,11 +261,21 @@ export function ClientDetail({
     setSampleDate(todayISO())
     setSampleNote('')
     setSampleRows([{ name: '', params: '' }])
+    setShowTransfer(false)
+    setTransferToId('')
+    setTransferError('')
   }, [client])
 
   const selectedDept = useMemo(
     () => departments.find((d) => d.id === deptId) || null,
     [departments, deptId],
+  )
+  const transferCandidates = useMemo(
+    () =>
+      teamUsers.filter(
+        (u) => userCanReceiveCrmLeads(u) && u.id !== client?.assignedTo,
+      ),
+    [teamUsers, client?.assignedTo],
   )
 
   if (!client) return null
@@ -513,6 +532,26 @@ export function ClientDetail({
     }
   }
 
+  async function handleTransfer() {
+    if (!onTransferManager || !client) return
+    const target = transferCandidates.find((u) => u.id === transferToId)
+    if (!target) {
+      setTransferError('Выберите менеджера')
+      return
+    }
+    setTransferring(true)
+    setTransferError('')
+    try {
+      await onTransferManager(client.id, { id: target.id, name: target.name })
+      setShowTransfer(false)
+      setTransferToId('')
+    } catch (err) {
+      setTransferError(err instanceof Error ? err.message : 'Не удалось передать лид')
+    } finally {
+      setTransferring(false)
+    }
+  }
+
   const fieldDisabled = !canEditCore
   const stepOverdue = clientStepOverdue(client)
   const hasActiveStep = Boolean(client.nextStep?.trim())
@@ -535,6 +574,16 @@ export function ClientDetail({
                 </>
               )}
             </p>
+            {isRealAdmin && onTransferManager && (
+              <button
+                type="button"
+                className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-secondary hover:underline"
+                onClick={() => setShowTransfer((v) => !v)}
+              >
+                <UserPlus size={14} />
+                {showTransfer ? 'Скрыть передачу' : 'Передать другому менеджеру'}
+              </button>
+            )}
           </div>
           <button
             type="button"
@@ -547,6 +596,37 @@ export function ClientDetail({
         </div>
 
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4 sm:px-6">
+          {isRealAdmin && onTransferManager && showTransfer && (
+            <div className="space-y-2 rounded-xl border border-secondary/30 bg-secondary/5 p-3">
+              <p className="text-sm font-medium text-text">Передать лид</p>
+              <p className="text-xs text-muted">
+                История, звонки и KPI закрепятся за выбранным менеджером. Менеджер
+                продаж не меняется.
+              </p>
+              <select
+                className="w-full rounded-lg border border-gray-200 bg-surface px-3 py-2.5 text-sm"
+                value={transferToId}
+                onChange={(e) => setTransferToId(e.target.value)}
+              >
+                <option value="">Выберите менеджера</option>
+                {transferCandidates.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.name}
+                  </option>
+                ))}
+              </select>
+              {transferError && <p className="text-xs text-danger">{transferError}</p>}
+              <Button
+                type="button"
+                size="sm"
+                disabled={transferring || !transferToId}
+                onClick={handleTransfer}
+              >
+                {transferring ? 'Передаю...' : 'Передать'}
+              </Button>
+            </div>
+          )}
+
           <div className="flex flex-wrap gap-2">
             <Badge variant={stageBadge(stage)}>{stageLabel(stage)}</Badge>
             {(isAdmin || canSeeLeadActivity(user)) && (
